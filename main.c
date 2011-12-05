@@ -517,6 +517,8 @@ static void dump_domain_memory(struct dump *dump,
 	unsigned char buf[PAGE_SIZE];
 	int ret;
 	FILE *mem;
+	int elf_header_size = 0;
+
 	const int fpp = (PAGE_SIZE/kdump_sizeof_pfn(dump, d));
 
 	fprintf(output, "Domain %d Pseudo-Physical Memory:\n", d->domid);
@@ -548,6 +550,9 @@ static void dump_domain_memory(struct dump *dump,
 		return;
 	}
 
+	if (dump->compat_arch && d->has_32bit_shinfo) {
+		elf_header_size = create_elf_header_32_dom(mem, dump, d->domid);
+	}
 
 	fprintf(output, "  Psuedo-physical address range: %016"PRIxPADDR"-%016"PRIxPADDR"\n",
 		(paddr_t)0, (paddr_t)(max_pfn << PAGE_SHIFT));
@@ -614,7 +619,7 @@ static void dump_domain_memory(struct dump *dump,
 		if (ret == 0)
 			continue;
 
-		if (fseek(mem, pa, SEEK_SET))
+		if (fseek(mem, pa + elf_header_size, SEEK_SET))
 		{
 			fprintf(stderr, "failed to seek to %#"PRIxMADDR" in dom0 memory dump: %s\n",
 				ma, strerror(errno));

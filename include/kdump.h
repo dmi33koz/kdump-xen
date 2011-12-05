@@ -301,4 +301,8 @@ extern int parse_domain_list(struct dump *dump, int nr_symtabs, const char **sym
 
 void free_domain(struct domain *domain);
 
+void hex_dump(int offset, void *ptr, int size);
+
+extern int create_elf_header_32_dom(FILE *f, struct dump *dump, int dom_id);
+
 #endif

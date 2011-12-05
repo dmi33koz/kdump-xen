@@ -166,3 +166,24 @@ struct dump *open_dump(const char *fn, struct symbol_table *xen_symtab,
 	close_dump(dump);
 	return NULL;
 }
+void hex_dump(int offset, void *ptr, int size) {
+	char *data = ptr;
+	int mask = 15;
+	int i = 0;
+	int c = 0;
+	fprintf(debug, " ------------------ \n");
+	fprintf(debug, "  %08x:", offset & ~mask);
+	if (offset & mask) {
+		for (i = 0; i < (offset & mask); i++) {
+			fprintf(debug, "   ");
+		}
+	}
+	for (c = 0; c < size; c++) {
+		if ((i != 0) && ((i & mask) == 0)) {
+			fprintf(debug, "\n  %08x:", offset + c);
+		}
+		fprintf(debug, " %02x", (unsigned char) data[c]);
+		i++;
+	}
+	fprintf(debug, "\n");
+}
