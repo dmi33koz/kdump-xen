@@ -56,10 +56,10 @@ extern size_t kdump_read_vaddr_cpu(struct dump *dump, struct cpu_state *cpu,
 }
 
 /* Read a pfn sized value from a machine address */
-pfn_t kdump_read_pfn_maddr(struct dump *dump, maddr_t maddr)
+pfn_t kdump_read_pfn_maddr(struct dump *dump, struct domain *dom, maddr_t maddr)
 {
 	vaddr_t ptr = 0;
-	size_t sz_pfn = kdump_sizeof_pfn(dump);
+	size_t sz_pfn = kdump_sizeof_pfn(dump, dom);
 
 	if (kdump_read_maddr(dump, maddr, &ptr, sz_pfn) != sz_pfn)
 	{
@@ -70,10 +70,10 @@ pfn_t kdump_read_pfn_maddr(struct dump *dump, maddr_t maddr)
 	return ptr;
 }
 
-pfn_t kdump_read_pfn_vaddr_cpu(struct dump *dump, struct cpu_state *cpu, vaddr_t vaddr)
+pfn_t kdump_read_pfn_vaddr_cpu(struct dump *dump, struct domain *dom, struct cpu_state *cpu, vaddr_t vaddr)
 {
 	maddr_t maddr = kdump_virt_to_mach(dump, cpu, vaddr);
-	return kdump_read_pfn_maddr(dump, maddr);
+	return kdump_read_pfn_maddr(dump, dom, maddr);
 }
 
 /* Read a pointer sized value from a machine address */

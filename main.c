@@ -517,7 +517,7 @@ static void dump_domain_memory(struct dump *dump,
 	unsigned char buf[PAGE_SIZE];
 	int ret;
 	FILE *mem;
-	const int fpp = (PAGE_SIZE/kdump_sizeof_pfn(dump));
+	const int fpp = (PAGE_SIZE/kdump_sizeof_pfn(dump, d));
 
 	fprintf(output, "Domain %d Pseudo-Physical Memory:\n", d->domid);
 
@@ -559,7 +559,7 @@ static void dump_domain_memory(struct dump *dump,
 		if((pfn % (fpp*fpp)) == 0)
 		{
 			ma = p2mll + (pfn/(fpp*fpp)*4);
-			p2ml = kdump_read_pfn_maddr(dump, ma) << PAGE_SHIFT;
+			p2ml = kdump_read_pfn_maddr(dump, d, ma) << PAGE_SHIFT;
 			if (p2ml == 0)
 			{
 				fprintf(output, "  No P2M frame list for frames %"PRIxPFN"-%"PRIxPFN"\n",
@@ -574,7 +574,7 @@ static void dump_domain_memory(struct dump *dump,
 		if ((pfn % fpp) == 0)
 		{
 			ma = p2ml + (pfn/fpp*4);
-			p2m = kdump_read_pfn_maddr(dump, ma) << PAGE_SHIFT;
+			p2m = kdump_read_pfn_maddr(dump, d, ma) << PAGE_SHIFT;
 			if (p2m == 0)
 			{
 				fprintf(output, "    No P2M for frames %"PRIxPFN"-%"PRIxPFN"\n",
@@ -588,7 +588,7 @@ static void dump_domain_memory(struct dump *dump,
 		}
 		ma = p2m + (pfn%fpp)*4;
 
-		mfn = kdump_read_pfn_maddr(dump, ma);
+		mfn = kdump_read_pfn_maddr(dump, d, ma);
 
 		//fprintf(output, "      P2M for frame %"PRIxPFN" is %"PRIxPFN" from %08"PRIxMADDR"\n",
 		//	pfn, mfn, ma);

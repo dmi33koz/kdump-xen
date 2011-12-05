@@ -51,7 +51,7 @@ extern vaddr_t idle_vcpu, per_cpu__curr_vcpu;
 extern vaddr_t domain_list, __context_switch;
 
 extern vaddr_t DOMAIN_sizeof, DOMAIN_id, DOMAIN_shared_info;
-extern vaddr_t DOMAIN_is_hvm, DOMAIN_is_privileged, DOMAIN_is_32bit_pv;
+extern vaddr_t DOMAIN_is_hvm, DOMAIN_is_privileged, DOMAIN_is_32bit_pv, DOMAIN_has_32bit_shinfo;
 extern vaddr_t DOMAIN_vcpus, DOMAIN_next;
 
 extern vaddr_t VCPU_sizeof, VCPU_vcpu_id, VCPU_processor;

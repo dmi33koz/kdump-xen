@@ -156,6 +156,7 @@ struct domain {
 	int is_hvm;
 	int is_privileged;
 	int is_32bit_pv;
+	int has_32bit_shinfo;
 };
 
 struct dump {
@@ -258,9 +259,13 @@ static inline int kdump_sizeof_cpu_pointer(struct dump *dump, struct cpu_state *
 		return kdump_sizeof_pointer(dump);
 }
 
-static inline int kdump_sizeof_pfn(struct dump *dump)
+static inline int kdump_sizeof_pfn(struct dump *dump, struct domain *d)
 {
-	return dump->_arch->sizeof_pfn;
+	if(d->has_32bit_shinfo && dump->compat_arch) {
+		return dump->compat_arch->sizeof_pfn;
+	} else {
+		return dump->_arch->sizeof_pfn;
+	}
 }
 static inline int kdump_sizeof_percpu(struct dump *dump)
 {

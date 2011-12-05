@@ -192,7 +192,7 @@ vaddr_t idle_vcpu, per_cpu__curr_vcpu;
 vaddr_t domain_list, __context_switch;
 
 vaddr_t DOMAIN_sizeof, DOMAIN_id, DOMAIN_shared_info;
-vaddr_t DOMAIN_is_hvm, DOMAIN_is_privileged, DOMAIN_is_32bit_pv;
+vaddr_t DOMAIN_is_hvm, DOMAIN_is_privileged, DOMAIN_is_32bit_pv, DOMAIN_has_32bit_shinfo;
 vaddr_t DOMAIN_vcpus, DOMAIN_next;
 
 vaddr_t VCPU_sizeof, VCPU_vcpu_id, VCPU_processor;
@@ -228,6 +228,7 @@ static const struct required_symbol
 	REQUIRED(DOMAIN_is_hvm),
 	REQUIRED(DOMAIN_is_privileged),
 	REQUIRED(DOMAIN_is_32bit_pv),
+	REQUIRED(DOMAIN_has_32bit_shinfo),
 	REQUIRED(DOMAIN_vcpus),
 	REQUIRED(DOMAIN_next),
 

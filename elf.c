@@ -358,6 +358,7 @@ int FN(parse_dump)(struct dump *dump)
 	switch (dump->e_machine) {
 	case EM_386:
 		dump->_arch = &arch_x86_32;
+		dump->compat_arch = NULL;
 		break;
 	case EM_X86_64:
 		dump->_arch = &arch_x86_64;

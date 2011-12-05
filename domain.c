@@ -66,6 +66,11 @@ void free_domain(struct domain *domain)
 	domain->vcpus=0;
 }
 
+// FIXME these two symbols better be exposed in XEN symbols
+#define SHARED_compat_pfn_to_mfn_list_list 0x910
+#define SHARED_compat_max_pfn 0x90c
+
+
 static int parse_domain(struct dump *dump, vaddr_t domain, int nr_symtabs, const char **symtabs)
 {
 	unsigned char tmp[DOMAIN_sizeof];
@@ -91,11 +96,7 @@ static int parse_domain(struct dump *dump, vaddr_t domain, int nr_symtabs, const
 	d->domid = *(uint16_t*)(tmp+DOMAIN_id);
 	d->v_domain_info = domain;
 	d->v_shared_info = kdump_read_pointer_vaddr(dump, NULL, domain+DOMAIN_shared_info);
-	d->shared_info.max_pfn = kdump_read_pfn_vaddr(dump, NULL, d->v_shared_info + SHARED_max_pfn);
-	d->shared_info.pfn_to_mfn_list_list =
-		kdump_read_pfn_vaddr(dump, NULL,
-					 d->v_shared_info + SHARED_pfn_to_mfn_list_list) << PAGE_SHIFT;
-
+	d->has_32bit_shinfo = kdump_read_pointer_vaddr(dump, NULL, domain+DOMAIN_has_32bit_shinfo);
 	d->is_hvm = kdump_read_uint8_vaddr(dump, NULL, domain+DOMAIN_is_hvm);
 	d->is_privileged = kdump_read_uint8_vaddr(dump, NULL, domain+DOMAIN_is_privileged);
 	d->is_32bit_pv = kdump_read_uint8_vaddr(dump, NULL, domain+DOMAIN_is_32bit_pv);
@@ -122,6 +123,19 @@ static int parse_domain(struct dump *dump, vaddr_t domain, int nr_symtabs, const
 				d->domid, vcpu->nr);
 			return 1;
 		}
+	}
+
+	if (d->has_32bit_shinfo) {
+		d->shared_info.max_pfn = kdump_read_pfn_vaddr(dump, d, d->v_shared_info + SHARED_compat_max_pfn);
+		d->shared_info.pfn_to_mfn_list_list =
+				kdump_read_pfn_vaddr(dump, d,
+						d->v_shared_info + SHARED_compat_pfn_to_mfn_list_list) << PAGE_SHIFT;
+
+	} else {
+		d->shared_info.max_pfn = kdump_read_pfn_vaddr(dump, d, d->v_shared_info + SHARED_max_pfn);
+		d->shared_info.pfn_to_mfn_list_list =
+				kdump_read_pfn_vaddr(dump, d,
+					 d->v_shared_info + SHARED_pfn_to_mfn_list_list) << PAGE_SHIFT;
 	}
 
 	if (nr_symtabs >= d->domid && symtabs[d->domid])

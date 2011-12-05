@@ -26,12 +26,12 @@ static inline size_t kdump_read_vaddr(struct dump *dump, struct domain *domain,
 }
 
 /* Read a pfn */
-extern pfn_t kdump_read_pfn_maddr(struct dump *dump, maddr_t maddr);
-extern pfn_t kdump_read_pfn_vaddr_cpu(struct dump *dump, struct cpu_state *cpu, vaddr_t vaddr);
+extern pfn_t kdump_read_pfn_maddr(struct dump *dump,struct domain *dom, maddr_t maddr);
+extern pfn_t kdump_read_pfn_vaddr_cpu(struct dump *dump, struct domain*dom, struct cpu_state *cpu, vaddr_t vaddr);
 static inline pfn_t kdump_read_pfn_vaddr(struct dump *dump, struct domain *domain, vaddr_t vaddr)
 {
 	struct cpu_state *cpu = kdump_select_cpu_for_read(dump, domain);
-	return kdump_read_pfn_vaddr_cpu(dump, cpu, vaddr);
+	return kdump_read_pfn_vaddr_cpu(dump, domain, cpu, vaddr);
 }
 
 /* Read a pointer. */
