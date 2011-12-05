@@ -243,7 +243,9 @@ static int parse_pt_note(struct dump *dump, Elf_Phdr *phdr)
 		for(i=0; i<NR_NOTE_HANDLERS;i++) {
 			handler = &note_handlers[i];
 			if (strncmp(handler->name, ELFNOTE_NAME(note), note->n_namesz)==0) {
-				handler->handler(dump, offset, note);
+				if (handler->handler(dump, offset, note)) {
+					fprintf(debug, "failed to handle note %s\n", ELFNOTE_NAME(note));
+				}
 				break;
 			}
 		}
@@ -295,8 +297,12 @@ static int foreach_phdr_type(struct dump *dump,
 				i, strerror(errno));
 			return 1;
 		}
-		if (phdr.p_type == p_type)
-			(*callback)(dump, &phdr);
+		if (phdr.p_type == p_type) {
+			if ((*callback)(dump, &phdr)) {
+				fprintf(debug, "failed to parse pt entry %d of type %d\n", i,
+						phdr.p_type);
+			}
+		}
 	}
 	return 0;
 }

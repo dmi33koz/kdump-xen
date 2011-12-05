@@ -38,8 +38,9 @@ typedef struct
 	ELF_Timeval pr_stime;		/* System time */
 	ELF_Timeval pr_cutime;		/* Cumulative user time */
 	ELF_Timeval pr_cstime;		/* Cumulative system time */
-	uint64_t pr_reg[26];		/* GP registers */
+	uint64_t pr_reg[27];		/* GP registers */
 	int32_t pr_fpvalid;		/* True if math co-processor being used.  */
+	int32_t pad;     /* just to match structure size on both 32/64 platforms */
 } ELF_Prstatus;
 
 #define PR_REG_r15		0
@@ -80,6 +81,8 @@ typedef struct {
 	uint64_t xen_compile_date;
 	uint64_t xen_compile_time;
 	uint64_t tainted;
+	uint64_t xen_phys_start;
+	uint64_t dom0_pfn_to_mfn_frame_list_list;
 } xen_crash_xen_regs_t;
 
 typedef struct {
