@@ -455,8 +455,11 @@ static void dump_xen_memory(struct dump *dump, const char *file)
 	unsigned char buf[PAGE_SIZE];
 	size_t ret;
 
-	maddr_t start, end;
+	maddr_t start, end, offset;
 	FILE *mem;
+	int elf_header_size = 0;
+	unsigned long *ptr;
+	int all_zero;
 
 	extern int create_elf_header_64(FILE *f, uint64_t memsize, uint64_t loadbase, uint64_t loadbase2  );
 
@@ -486,21 +489,44 @@ static void dump_xen_memory(struct dump *dump, const char *file)
 	fprintf(output, "  Writing to: %s\n", file);
 	fprintf(output, "\n");
 
-	create_elf_header_64(mem, end-start, XEN_virt_start, XEN_page_offset+start);
+	elf_header_size = create_elf_header_64(mem, end-start, XEN_virt_start, XEN_page_offset+start);
+	offset = elf_header_size;
 
 	for( addr = start; addr < end; addr += PAGE_SIZE )
 	{
 		ret = kdump_read_maddr(dump, addr, buf, PAGE_SIZE);
-		if (ret == 0)
+
+		if (fseek(mem, offset, SEEK_SET)) {
+			fprintf(output, "Error: failed to seek to %#"PRIxMADDR" in xen memory dump: %s\n", offset, strerror(errno));
+			goto out;
+		}
+		/* check for blank page and fseek to the end of it in dump file without writing.
+		 * this makes a hole in sparse file. Saves storage space.
+		 */
+		all_zero = 1;
+		for (ptr = (unsigned long*) buf; ptr < (unsigned long*) (buf + PAGE_SIZE); ptr++) {
+			if (*ptr != 0) {
+				all_zero = 0;
+				break;
+			}
+		}
+		if (all_zero || ret == 0) {
+			offset += PAGE_SIZE;
+			if (fseek(mem, offset, SEEK_SET)) {
+				fprintf(output, "Error: Failed to seek to %#"PRIxMADDR" in xen memory dump: %s\n", offset, strerror(errno));
+				goto out;
+			}
 			continue;
+		}
 
 		/* Don't worry about short writes too much but exit on error. */
 		if (fwrite(buf, 1, ret, mem)<0)
 		{
-			fprintf(stderr, "error writing to offset %"PRIxMADDR" in xen memory dump: %s\n",
-				addr, strerror(errno));
+			fprintf(output, "Error: writing to offset %"PRIxMADDR" in xen memory dump: %s\n",
+				offset, strerror(errno));
 			goto out;
 		}
+		offset += PAGE_SIZE;
 	}
 
  out:
@@ -512,12 +538,14 @@ static void dump_domain_memory(struct dump *dump,
 {
 	maddr_t p2mll, p2ml, p2m;
 	pfn_t max_pfn, pfn, mfn;
-	maddr_t ma;
+	maddr_t ma, offset;
 	paddr_t pa;
 	unsigned char buf[PAGE_SIZE];
 	int ret;
 	FILE *mem;
 	int elf_header_size = 0;
+	unsigned long *ptr;
+	int all_zero;
 
 	const int fpp = (PAGE_SIZE/kdump_sizeof_pfn(dump, d));
 
@@ -616,21 +644,36 @@ static void dump_domain_memory(struct dump *dump,
 		//fprintf(output, "        Copy MA %"PRIxMADDR" to PA %"PRIxPFN"\n", ma, pa);
 
 		ret = kdump_read_maddr(dump, ma, buf, PAGE_SIZE);
-		if (ret == 0)
-			continue;
-
-		if (fseek(mem, pa + elf_header_size, SEEK_SET))
+		offset = pa + elf_header_size;
+		if (fseek(mem, offset, SEEK_SET))
 		{
-			fprintf(stderr, "failed to seek to %#"PRIxMADDR" in dom0 memory dump: %s\n",
-				ma, strerror(errno));
+			fprintf(output, "Error: failed to seek to %#"PRIxMADDR" in dom0 memory dump: %s\n",
+				offset, strerror(errno));
 			goto out;
 		}
-
+		/* check for blank page and fseek to the end of it in dump file without writing.
+		 * this makes a hole in sparse file. Saves storage space.
+		 */
+		all_zero = 1;
+		for (ptr = (unsigned long*) buf; ptr < (unsigned long*) (buf + PAGE_SIZE); ptr++) {
+			if (*ptr != 0) {
+				all_zero = 0;
+				break;
+			}
+		}
+		if (all_zero || ret == 0) {
+			offset += PAGE_SIZE;
+			if (fseek(mem, offset, SEEK_SET)) {
+				fprintf(output, "Error: Failed to seek to %#"PRIxMADDR" in dom0 memory dump: %s\n", offset, strerror(errno));
+				goto out;
+			}
+			continue;
+		}
 		/* Don't worry about short writes too much but exit on error. */
 		if (fwrite(buf, 1, ret, mem)<0)
 		{
-			fprintf(stderr, "error writing to offset %"PRIxMADDR" in dom0 memory dump: %s\n",
-				ma, strerror(errno));
+			fprintf(output, "Error: writing to offset %"PRIxMADDR" in dom0 memory dump: %s\n",
+				offset, strerror(errno));
 			goto out;
 		}
 
