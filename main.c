@@ -1,5 +1,7 @@
 /* Copyright (c) 2007, XenSource, Inc. - All rights reserved. */
 
+#define _FILE_OFFSET_BITS 64
+
 #include <errno.h>
 #include <fcntl.h>
 #include <inttypes.h>
@@ -533,19 +535,15 @@ static void dump_xen_memory(struct dump *dump, const char *file)
 	fclose(mem);
 }
 
-static void dump_domain_memory(struct dump *dump,
-			       struct domain *d, const char *file)
-{
+static void dump_domain_memory(struct dump *dump, struct domain *d, const char *file) {
 	maddr_t p2mll, p2ml, p2m;
 	pfn_t max_pfn, pfn, mfn;
-	maddr_t ma, offset;
+	maddr_t ma;
 	paddr_t pa;
 	unsigned char buf[PAGE_SIZE];
-	int ret;
 	FILE *mem;
-	int elf_header_size = 0;
 	unsigned long *ptr;
-	int all_zero;
+	int skip_page;
 
 	const int fpp = (PAGE_SIZE/kdump_sizeof_pfn(dump, d));
 
@@ -579,7 +577,7 @@ static void dump_domain_memory(struct dump *dump,
 	}
 
 	if (dump->compat_arch && d->has_32bit_shinfo) {
-		elf_header_size = create_elf_header_32_dom(mem, dump, d->domid);
+		create_elf_header_32_dom(mem, dump, d->domid);
 	}
 
 	fprintf(output, "  Psuedo-physical address range: %016"PRIxPADDR"-%016"PRIxPADDR"\n",
@@ -589,6 +587,7 @@ static void dump_domain_memory(struct dump *dump,
 
 	for (pfn=0; pfn<max_pfn; pfn++)
 	{
+		skip_page = 0;
 		if((pfn % (fpp*fpp)) == 0)
 		{
 			ma = p2mll + (pfn/(fpp*fpp)*4);
@@ -629,10 +628,10 @@ static void dump_domain_memory(struct dump *dump,
 		if (mfn == 0x00000000ffffffffULL)
 		{
 			//fprintf(output, "        Skip PFN %"PRIxPFN", MFN=%"PRIxPFN"\n", pfn, mfn);
-			continue;
+			skip_page = 1;
 		}
 
-		if (mfn & (1ULL<<31))
+		if (!skip_page && (mfn & (1ULL<<31)))
 		{
 			//fprintf(output, "      FOREIGN\n");
 			mfn &= ~(1<<31);
@@ -642,42 +641,45 @@ static void dump_domain_memory(struct dump *dump,
 		pa = (pfn<<PAGE_SHIFT);
 
 		//fprintf(output, "        Copy MA %"PRIxMADDR" to PA %"PRIxPFN"\n", ma, pa);
-
-		ret = kdump_read_maddr(dump, ma, buf, PAGE_SIZE);
-		offset = pa + elf_header_size;
-		if (fseek(mem, offset, SEEK_SET))
-		{
-			fprintf(output, "Error: failed to seek to %#"PRIxMADDR" in dom0 memory dump: %s\n",
-				offset, strerror(errno));
-			goto out;
-		}
-		/* check for blank page and fseek to the end of it in dump file without writing.
-		 * this makes a hole in sparse file. Saves storage space.
-		 */
-		all_zero = 1;
-		for (ptr = (unsigned long*) buf; ptr < (unsigned long*) (buf + PAGE_SIZE); ptr++) {
-			if (*ptr != 0) {
-				all_zero = 0;
-				break;
+		if (!skip_page) {
+			if (kdump_read_maddr(dump, ma, buf, PAGE_SIZE) != PAGE_SIZE) {
+				fprintf(output, "Warning: failed to read machine addr %#"PRIxMADDR" for dom0\n", ma);
+				skip_page = 1;
 			}
 		}
-		if (all_zero || ret == 0) {
-			offset += PAGE_SIZE;
-			if (fseek(mem, offset, SEEK_SET)) {
-				fprintf(output, "Error: Failed to seek to %#"PRIxMADDR" in dom0 memory dump: %s\n", offset, strerror(errno));
-				goto out;
+
+		/* check for blank page */
+		if (!skip_page) {
+		   skip_page = 1;
+			for (ptr = (unsigned long*) buf; ptr < (unsigned long*) (buf + PAGE_SIZE); ptr++) {
+				if (*ptr != 0) {
+					skip_page = 0;
+					break;
+				}
 			}
-			continue;
-		}
-		/* Don't worry about short writes too much but exit on error. */
-		if (fwrite(buf, 1, ret, mem)<0)
-		{
-			fprintf(output, "Error: writing to offset %"PRIxMADDR" in dom0 memory dump: %s\n",
-				offset, strerror(errno));
-			goto out;
 		}
 
+		/* skip blank page if it's not the last one */
+		if (skip_page) {
+			if (pfn != max_pfn - 1) {
+				if (fseeko(mem, PAGE_SIZE, SEEK_CUR)) {
+					fprintf(output, "Error: failed to seek pa %"PRIxMADDR" in dom0 memory dump: %s\n", pa, strerror(errno));
+					goto out;
+				}
+				continue;
+			} else {
+				memset(buf, '\0', PAGE_SIZE);
+			}
+		}
+
+		if (fwrite(buf, 1, PAGE_SIZE, mem) != PAGE_SIZE)
+		{
+			fprintf(output, "Error: writing pa %"PRIxMADDR" in dom0 memory dump: %s\n",
+				pa, strerror(errno));
+			goto out;
+		}
 	}
+	fprintf(output, "Dom0 dumped OK. File size %"PRIxMADDR"\n", ftello(mem));
  out:
 	fclose(mem);
 }
