@@ -201,7 +201,7 @@ void add_note(struct phdr_info *pi, char * name, uint32_t type, char * data, siz
 
 void write_buf(FILE *f, void *b, int size) {
    static int offset = 0;
-   hex_dump(offset, (char*) b, size);
+   //hex_dump(offset, (char*) b, size);
    offset += size;
    if (fwrite(b, 1, size, f) < 0) {
       exit(-1);

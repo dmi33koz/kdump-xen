@@ -37,76 +37,9 @@ typedef TYPE(Word) Elf_Word;
 #define DYNAMICALLY_FILLED   0
 #define RAW_OFFSET         256
 
-static Elf_Ehdr out_ehdr = {
-    { ELFMAG0, ELFMAG1, ELFMAG2, ELFMAG3,    /* EI_MAG{0-3} */
-      ELFCLASS64,                            /* EI_CLASS */
-      ELFDATA2LSB,                           /* EI_DATA */
-      EV_CURRENT,                            /* EI_VERSION */
-      0, 0, 0, 0, 0, 0, 0, 0, 0 },           /* e_ident */
-    ET_CORE,                                 /* e_type */
-    EM_X86_64,                               /* e_machine */
-    EV_CURRENT,                              /* e_version */
-    DYNAMICALLY_FILLED,                      /* e_entry */
-    sizeof(Elf_Ehdr),                      /* e_phoff */
-    DYNAMICALLY_FILLED,                      /* e_shoff */
-    0,                                       /* e_flags */
-    sizeof(Elf_Ehdr),                      /* e_ehsize */
-    sizeof(Elf_Phdr),                      /* e_phentsize */
-    2,                                       /* e_phnum */
-    sizeof(Elf_Shdr),                      /* e_shentsize */
-    3,                                       /* e_shnum */
-    2                                        /* e_shstrndx */
-};
+#define ALIGN(n) ((n+3)&~3)
 
-static Elf_Phdr out_phdr = {
-    PT_LOAD,                                 /* p_type */
-    PF_R|PF_W|PF_X,                          /* p_flags */
-    RAW_OFFSET,                              /* p_offset */
-    DYNAMICALLY_FILLED,                      /* p_vaddr */
-    DYNAMICALLY_FILLED,                      /* p_paddr */
-    DYNAMICALLY_FILLED,                      /* p_filesz */
-    DYNAMICALLY_FILLED,                      /* p_memsz */
-    64                                       /* p_align */
-};
 
-static Elf_Phdr out_phdr2 = {
-    PT_LOAD,                                 /* p_type */
-    PF_R|PF_W|PF_X,                          /* p_flags */
-    RAW_OFFSET,                              /* p_offset */
-    DYNAMICALLY_FILLED,                      /* p_vaddr */
-    DYNAMICALLY_FILLED,                      /* p_paddr */
-    DYNAMICALLY_FILLED,                      /* p_filesz */
-    DYNAMICALLY_FILLED,                      /* p_memsz */
-    64                                       /* p_align */
-};
-
-static char out_shstrtab[] = "\0.text\0.shstrtab";
-
-static Elf_Shdr out_shdr[] = {
-    { 0 },
-    { 1,                                     /* sh_name */
-      SHT_PROGBITS,                          /* sh_type */
-      SHF_WRITE|SHF_ALLOC|SHF_EXECINSTR,     /* sh_flags */
-      DYNAMICALLY_FILLED,                    /* sh_addr */
-      RAW_OFFSET,                            /* sh_offset */
-      DYNAMICALLY_FILLED,                    /* sh_size */
-      0,                                     /* sh_link */
-      0,                                     /* sh_info */
-      64,                                    /* sh_addralign */
-      0                                      /* sh_entsize */
-    },
-    { 7,                                     /* sh_name */
-      SHT_STRTAB,                            /* sh_type */
-      0,                                     /* sh_flags */
-      0,                                     /* sh_addr */
-      DYNAMICALLY_FILLED,                    /* sh_offset */
-      sizeof(out_shstrtab),                  /* sh_size */
-      0,                                     /* sh_link */
-      0,                                     /* sh_info */
-      1,                                     /* sh_addralign */
-      0                                      /* sh_entsize */
-    }
-};
 
 #define ELFNOTE_NAMESZ(_n_) (((_n_)->n_namesz+3)&~3)
 #define ELFNOTE_DESCSZ(_n_) (((_n_)->n_descsz+3)&~3)
@@ -115,6 +48,129 @@ static Elf_Shdr out_shdr[] = {
 #define ELFNOTE_NAME(_n_) (const char *)((void*)(_n_) + sizeof(*(_n_)))
 #define ELFNOTE_DESC(_n_) (void *)(ELFNOTE_NAME(_n_) + ELFNOTE_NAMESZ(_n_))
 #define ELFNOTE_NEXT(_n_) (Elf_Nhdr*)(ELFNOTE_DESC(_n_) + ELFNOTE_DESCSZ(_n_))
+
+typedef struct phdr_info {
+	Elf_Phdr phdr;
+	char *data;
+	int size;
+} phdr_info_t;
+
+typedef struct {
+	int count;
+	phdr_info_t *pinfos; //array of pinfos
+} phdr_all_t;
+
+typedef struct elf_all {
+	Elf_Ehdr ehdr;
+	phdr_all_t phdrs;
+} elf_all_t;
+
+// global pointer to elf headers
+elf_all_t elfall;
+
+// add phdr_info into elf_all.phdr_all
+// it reallocated structures so old pointers become invalid.
+static phdr_info_t * __add_phdr_info(elf_all_t *all, Elf_Word type, Elf_Word flags) {
+	phdr_all_t *p_all;
+	void *tmp;
+	phdr_info_t *pi;
+
+	p_all = &all->phdrs;
+	if (p_all->count == 0) {
+		p_all->pinfos = malloc(sizeof(phdr_info_t));
+	} else {
+		tmp = realloc(p_all->pinfos, sizeof(phdr_info_t) * (p_all->count + 1));
+		p_all->pinfos = tmp;
+	}
+	pi = &p_all->pinfos[p_all->count];
+	memset(pi, '\0', sizeof(phdr_info_t));
+	p_all->count++;
+	pi->phdr.p_type = type;
+	pi->phdr.p_flags = flags;
+	all->ehdr.e_phnum++;
+
+	return &p_all->pinfos[p_all->count - 1];
+}
+
+static void __add_note(phdr_info_t *pi, const char * name, Elf_Word type, char * data, size_t size) {
+	Elf_Nhdr *nhdr;
+	char *buf, *ptr;
+	int buf_size;
+
+	buf_size = sizeof(Elf_Nhdr) + ALIGN(strlen(name)+1) + ALIGN(size);
+	buf = ptr = malloc(buf_size);
+	memset(buf, '\0', buf_size);
+	nhdr = (Elf_Nhdr*) buf;
+	//set note heder
+	nhdr->n_namesz = strlen(name) + 1;
+	nhdr->n_type = type;
+	nhdr->n_descsz = size;
+	ptr += sizeof(Elf_Nhdr);
+	//set name
+	strcpy(ptr, name);
+	ptr += ALIGN(strlen(name)+1);
+	//set data
+	memcpy(ptr, data, size);
+
+	// add to phdr_info
+	if (!pi->data) {
+		pi->data = buf;
+		pi->size = buf_size;
+	} else {
+		ptr = realloc(pi->data, pi->size + buf_size);
+		pi->data = ptr;
+		memcpy(pi->data + pi->size, buf, buf_size);
+		pi->size += buf_size;
+		free(buf);
+	}
+	pi->phdr.p_filesz = pi->phdr.p_memsz = pi->size;
+}
+
+static void __fix_section_offsets(elf_all_t *all) {
+	phdr_all_t *p_all = &all->phdrs;
+	phdr_info_t *pi;
+	int i;
+	// shift to the end of program headers
+	unsigned int offset = sizeof(Elf_Ehdr) + p_all->count * sizeof(Elf_Phdr);
+
+	for (i = 0; i < p_all->count; i++) {
+		pi = &p_all->pinfos[i];
+		pi->phdr.p_offset = offset;
+		offset += pi->phdr.p_filesz;
+	}
+}
+
+static void __write_buf(FILE *f, void *b, int size) {
+	static int offset = 0;
+	hex_dump(offset, (char*) b, size);
+	offset += size;
+	if (fwrite(b, 1, size, f) < 0) {
+		exit(-1);
+	}
+}
+
+static void __write_all_elfs(FILE *f, elf_all_t *all) {
+	Elf_Ehdr *ehdr = &all->ehdr;
+	phdr_all_t *p_all = &all->phdrs;
+	int pi_index = 0;
+	phdr_info_t *p_info;
+	p_all = &all->phdrs;
+
+	// write Ehdr
+	__write_buf(f, ehdr, sizeof(Elf_Ehdr));
+	// write all Phdr(s)
+	for (pi_index = 0; pi_index < p_all->count; pi_index++) {
+		p_info = &p_all->pinfos[pi_index];
+		__write_buf(f, &p_info->phdr, sizeof(Elf_Phdr));
+	}
+	// write all Phdr(s) data
+	for (pi_index = 0; pi_index < p_all->count; pi_index++) {
+		p_info = &p_all->pinfos[pi_index];
+		if (p_info->data) {
+			__write_buf(f, p_info->data, p_info->size);
+		}
+	}
+}
 
 /* Allocate `dump->cpus' to handle `nr' cpus. */
 static int allocate_cpus(struct dump *dump, int nr)
@@ -229,7 +285,8 @@ static int parse_pt_note(struct dump *dump, Elf_Phdr *phdr)
 	Elf_Nhdr *note;
 	unsigned char notes[phdr->p_filesz];
 	struct note_handler *handler;
-	int i;
+	int i, n;
+	phdr_info_t *p_info;
 
 	if (kdump_read(dump, notes,  phdr->p_offset, phdr->p_filesz) != phdr->p_filesz)
 	{
@@ -237,9 +294,12 @@ static int parse_pt_note(struct dump *dump, Elf_Phdr *phdr)
 		return 1;
 	}
 
+	p_info = __add_phdr_info(&elfall, phdr->p_type, phdr->p_flags);
+	n = 0;
 	for (note = (Elf_Nhdr*)notes;
 	     (void*)note < (void*)notes + phdr->p_filesz - 1;
 	     note = ELFNOTE_NEXT(note))	{
+		fprintf(debug, "parse Note entry %d type 0x%x name %s\n", n, phdr->p_type, ELFNOTE_NAME(note));
 		for(i=0; i<NR_NOTE_HANDLERS;i++) {
 			handler = &note_handlers[i];
 			if (strncmp(handler->name, ELFNOTE_NAME(note), note->n_namesz)==0) {
@@ -249,12 +309,14 @@ static int parse_pt_note(struct dump *dump, Elf_Phdr *phdr)
 				break;
 			}
 		}
+		__add_note(p_info, ELFNOTE_NAME(note), note->n_type, (char*) ELFNOTE_DESC(note), note->n_descsz);
 
 		if (i == NR_NOTE_HANDLERS) {
 			fprintf(debug, "unknown note type %s\n", ELFNOTE_NAME(note));
 		}
 
 		offset += (off64_t)(unsigned long)ELFNOTE_NEXT(note) - (off64_t)(unsigned long)note;
+		n++;
 	}
 
 	return 0;
@@ -298,8 +360,9 @@ static int foreach_phdr_type(struct dump *dump,
 			return 1;
 		}
 		if (phdr.p_type == p_type) {
+		   fprintf(debug, "parse Phdr entry %d of type 0x%x\n", i, phdr.p_type);
 			if ((*callback)(dump, &phdr)) {
-				fprintf(debug, "failed to parse pt entry %d of type %d\n", i,
+				fprintf(debug, "Error: failed to parse pt entry %d of type 0x%x\n", i,
 						phdr.p_type);
 			}
 		}
@@ -307,43 +370,17 @@ static int foreach_phdr_type(struct dump *dump,
 	return 0;
 }
 
-#define ALIGN(n) ((n+3)&~3)
+int FN(create_elf_header)(FILE *f, uint64_t start, uint64_t end, uint64_t v_start, uint64_t p_offset) {
+	phdr_info_t *p_info;
+	fprintf(debug, "start %llx end %llx v_start %llx p_offset %llx\n", start, end, v_start, p_offset);
 
-int FN(create_elf_header)(FILE *f, uint64_t memsize, uint64_t loadbase, uint64_t loadbase2)
-{
-	char r[4];
-
-	/* size of "top" headers */
-	unsigned int raw_offset = sizeof(out_ehdr)+sizeof(out_phdr)+sizeof(out_phdr2);
-
-	out_ehdr.e_entry = loadbase;
-	out_ehdr.e_shoff = raw_offset;
-
-	out_phdr.p_vaddr  = loadbase;
-	out_phdr.p_paddr  = loadbase;
-	out_phdr.p_filesz = memsize;
-	out_phdr.p_memsz  = memsize;
-	out_phdr.p_offset = raw_offset+sizeof(out_shdr)+ALIGN(sizeof(out_shstrtab));
-
-	out_phdr2.p_vaddr  = loadbase2;
-	out_phdr2.p_paddr  = loadbase2;
-	out_phdr2.p_filesz = memsize;
-	out_phdr2.p_memsz  = memsize;
-	out_phdr2.p_offset = out_phdr.p_offset;
-
-	out_shdr[1].sh_addr   = loadbase;
-	out_shdr[1].sh_size   = memsize;
-	out_shdr[1].sh_offset = out_phdr.p_offset;
-	out_shdr[2].sh_offset = raw_offset+sizeof(out_shdr);
-
-	/* write em all down */
-	fwrite(&out_ehdr , sizeof(out_ehdr), 1, f);
-	fwrite(&out_phdr, sizeof(out_phdr), 1, f);
-	fwrite(&out_phdr2, sizeof(out_phdr2), 1, f);
-	fwrite(&out_shdr, sizeof(out_shdr), 1, f);
-	fwrite(out_shstrtab, sizeof(out_shstrtab), 1, f);
-	fwrite(r, ALIGN(sizeof(out_shstrtab))-sizeof(out_shstrtab), 1, f);
-
+	p_info = __add_phdr_info(&elfall, PT_LOAD, PF_R | PF_W | PF_X);
+	p_info->phdr.p_vaddr = v_start;
+	p_info->phdr.p_paddr = start;
+	p_info->phdr.p_filesz = end - start;
+	p_info->phdr.p_memsz = end - start;
+	__fix_section_offsets(&elfall);
+	__write_all_elfs(f, &elfall);
 	return ftell(f);
 }
 
@@ -351,14 +388,23 @@ int FN(parse_dump)(struct dump *dump)
 {
 	extern struct arch arch_x86_32;
 	extern struct arch arch_x86_64;
-
 	Elf_Ehdr ehdr;
+	Elf_Ehdr *ehdr_out = &elfall.ehdr;
+
+	memset(&elfall, '\0', sizeof(elfall));
 
 	if (kdump_read(dump, &ehdr, 0, sizeof(ehdr)) != sizeof(ehdr))
 	{
-                fprintf(debug, "failed to read dump elf header: %s\n", strerror(errno));
-                return 1;
-        }
+		fprintf(debug, "failed to read dump elf header: %s\n", strerror(errno));
+		return 1;
+	}
+	memcpy(ehdr_out, &ehdr, sizeof(ehdr));
+	ehdr_out->e_phnum = 0;
+	ehdr_out->e_shentsize = 0;
+	ehdr_out->e_shnum = 0;
+	ehdr_out->e_shstrndx = 0;
+	fprintf(debug, "elf header in:\n");
+	//hex_dump(0, &ehdr, sizeof(ehdr));
 
 	dump->e_machine = ehdr.e_machine;
 	switch (dump->e_machine) {

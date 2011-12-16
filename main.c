@@ -460,10 +460,8 @@ static void dump_xen_memory(struct dump *dump, const char *file)
 	maddr_t start, end, offset;
 	FILE *mem;
 	int elf_header_size = 0;
-	unsigned long *ptr;
-	int all_zero;
 
-	extern int create_elf_header_64(FILE *f, uint64_t memsize, uint64_t loadbase, uint64_t loadbase2  );
+	extern int create_elf_header_64(FILE *f, uint64_t start, uint64_t end, uint64_t v_start,uint64_t p_offset);
 
 	fprintf(output, "Xen Physical Memory:\n");
 
@@ -488,47 +486,24 @@ static void dump_xen_memory(struct dump *dump, const char *file)
 
 	fprintf(output, "  Heap: %016"PRIxMADDR"-%016"PRIxMADDR"\n",
 		start, end);
+
+	fprintf(output, "  XEN_virt_start: %016"PRIxMADDR" XEN_page_offset: %016"PRIxMADDR"\n", XEN_virt_start, XEN_page_offset);
 	fprintf(output, "  Writing to: %s\n", file);
 	fprintf(output, "\n");
 
-	elf_header_size = create_elf_header_64(mem, end-start, XEN_virt_start, XEN_page_offset+start);
+	elf_header_size = create_elf_header_64(mem, start, end,  XEN_virt_start, XEN_page_offset);
 	offset = elf_header_size;
 
-	for( addr = start; addr < end; addr += PAGE_SIZE )
-	{
+	for (addr = start; addr < end; addr += PAGE_SIZE) {
 		ret = kdump_read_maddr(dump, addr, buf, PAGE_SIZE);
-
-		if (fseek(mem, offset, SEEK_SET)) {
-			fprintf(output, "Error: failed to seek to %#"PRIxMADDR" in xen memory dump: %s\n", offset, strerror(errno));
-			goto out;
-		}
-		/* check for blank page and fseek to the end of it in dump file without writing.
-		 * this makes a hole in sparse file. Saves storage space.
-		 */
-		all_zero = 1;
-		for (ptr = (unsigned long*) buf; ptr < (unsigned long*) (buf + PAGE_SIZE); ptr++) {
-			if (*ptr != 0) {
-				all_zero = 0;
-				break;
-			}
-		}
-		if (all_zero || ret == 0) {
-			offset += PAGE_SIZE;
-			if (fseek(mem, offset, SEEK_SET)) {
-				fprintf(output, "Error: Failed to seek to %#"PRIxMADDR" in xen memory dump: %s\n", offset, strerror(errno));
-				goto out;
-			}
+		if (ret == 0)
 			continue;
-		}
 
 		/* Don't worry about short writes too much but exit on error. */
-		if (fwrite(buf, 1, ret, mem)<0)
-		{
-			fprintf(output, "Error: writing to offset %"PRIxMADDR" in xen memory dump: %s\n",
-				offset, strerror(errno));
+		if (fwrite(buf, 1, ret, mem) < 0) {
+			fprintf(stderr, "error writing to offset %"PRIxMADDR" in xen memory dump: %s\n", addr, strerror(errno));
 			goto out;
 		}
-		offset += PAGE_SIZE;
 	}
 
  out:
