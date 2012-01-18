@@ -46,19 +46,20 @@ if (!have_required_symbols) \
 	return __ret__; \
 }
 
-extern vaddr_t conring, conringp, conringc;
+extern vaddr_t conring, conring_size, conringp, conringc;
 extern vaddr_t idle_vcpu, per_cpu__curr_vcpu;
 extern vaddr_t domain_list, __context_switch;
 
 extern vaddr_t DOMAIN_sizeof, DOMAIN_id, DOMAIN_shared_info;
 extern vaddr_t DOMAIN_is_hvm, DOMAIN_is_privileged, DOMAIN_is_32bit_pv, DOMAIN_has_32bit_shinfo;
-extern vaddr_t DOMAIN_vcpus, DOMAIN_next;
+extern vaddr_t DOMAIN_vcpus, DOMAIN_next, DOMAIN_max_vcpus;
 
 extern vaddr_t VCPU_sizeof, VCPU_vcpu_id, VCPU_processor;
 extern vaddr_t VCPU_pause_flags, VCPU_thread_flags, VCPU_user_regs;
 extern vaddr_t VCPU_cr3;
 
 extern vaddr_t CPUINFO_sizeof;
+extern vaddr_t CPUINFO_processor_id, CPUINFO_current_vcpu;
 
 extern vaddr_t SHARED_max_pfn, SHARED_pfn_to_mfn_list_list;
 

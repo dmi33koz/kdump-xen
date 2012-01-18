@@ -76,6 +76,8 @@ static int parse_domain(struct dump *dump, vaddr_t domain, int nr_symtabs, const
 	unsigned char tmp[DOMAIN_sizeof];
 	struct domain *d;
 	int i;
+	unsigned int max_vcpus;
+	vaddr_t vcpu_array;
 
 	ASSERT_REQUIRED_SYMBOLS(1);
 
@@ -101,9 +103,11 @@ static int parse_domain(struct dump *dump, vaddr_t domain, int nr_symtabs, const
 	d->is_privileged = kdump_read_uint8_vaddr(dump, NULL, domain+DOMAIN_is_privileged);
 	d->is_32bit_pv = kdump_read_uint8_vaddr(dump, NULL, domain+DOMAIN_is_32bit_pv);
 
-	for(i=0; i<MAX_VIRT_CPUS ;i++) {
-		vaddr_t vcpu_ptr = domain+DOMAIN_vcpus+(i*kdump_sizeof_pointer(dump));
-		vaddr_t vcpu_info = kdump_read_pointer_vaddr(dump, NULL, vcpu_ptr);
+	max_vcpus = kdump_read_uint32_vaddr(dump, NULL, domain+DOMAIN_max_vcpus);
+	vcpu_array = kdump_read_pointer_vaddr(dump, NULL, domain+DOMAIN_vcpus);
+
+	for(i=0; i<max_vcpus ;i++) {
+		vaddr_t vcpu_info = kdump_read_pointer_vaddr(dump, NULL, vcpu_array+(i*kdump_sizeof_pointer(dump)));
 		struct cpu_state *vcpu;
 
 		/* XXX: doesn't properly handle sparse VCPU map. Not sure if that can occur */

@@ -187,19 +187,20 @@ static void symtab_sanity_check(const char * p, struct symbol *s)
 	}
 }
 
-vaddr_t conring, conringp, conringc;
+vaddr_t conring, conring_size, conringp, conringc;
 vaddr_t idle_vcpu, per_cpu__curr_vcpu;
 vaddr_t domain_list, __context_switch;
 
 vaddr_t DOMAIN_sizeof, DOMAIN_id, DOMAIN_shared_info;
 vaddr_t DOMAIN_is_hvm, DOMAIN_is_privileged, DOMAIN_is_32bit_pv, DOMAIN_has_32bit_shinfo;
-vaddr_t DOMAIN_vcpus, DOMAIN_next;
+vaddr_t DOMAIN_vcpus, DOMAIN_next, DOMAIN_max_vcpus;
 
 vaddr_t VCPU_sizeof, VCPU_vcpu_id, VCPU_processor;
 vaddr_t VCPU_pause_flags, VCPU_thread_flags, VCPU_user_regs;
 vaddr_t VCPU_cr3;
 
 vaddr_t CPUINFO_sizeof;
+vaddr_t CPUINFO_processor_id, CPUINFO_current_vcpu;
 
 vaddr_t SHARED_max_pfn, SHARED_pfn_to_mfn_list_list;
 
@@ -215,6 +216,7 @@ static const struct required_symbol
 #define REQUIRED(x) { .n = #x , .address = &x, .required = 1 }
 #define OPTIONAL(x) { .n = #x , .address = &x, .required = 0 }
 	REQUIRED(conring),
+	REQUIRED(conring_size),
 	REQUIRED(conringp),
 	REQUIRED(conringc),
 	REQUIRED(idle_vcpu),
@@ -231,6 +233,7 @@ static const struct required_symbol
 	REQUIRED(DOMAIN_has_32bit_shinfo),
 	REQUIRED(DOMAIN_vcpus),
 	REQUIRED(DOMAIN_next),
+	REQUIRED(DOMAIN_max_vcpus),
 
 	REQUIRED(VCPU_sizeof),
 	REQUIRED(VCPU_vcpu_id),
@@ -241,6 +244,8 @@ static const struct required_symbol
 	REQUIRED(VCPU_cr3),
 
 	REQUIRED(CPUINFO_sizeof),
+	REQUIRED(CPUINFO_processor_id),
+	REQUIRED(CPUINFO_current_vcpu),
 
 	REQUIRED(SHARED_max_pfn),
 	REQUIRED(SHARED_pfn_to_mfn_list_list),

@@ -302,7 +302,8 @@ static void __dump_console_ring(FILE *o,
 
 static void dump_xen_console_ring(struct dump *dump)
 {
-	uint32_t  producer, consumer;
+	uint32_t  producer, consumer, ring_size;
+	vaddr_t   ring_address;
 
 	fprintf(output, "Console Ring:\n");
 
@@ -312,11 +313,13 @@ static void dump_xen_console_ring(struct dump *dump)
 		return;
 
 	}
+	ring_address = kdump_read_pointer_vaddr(dump, NULL, conring);
+	ring_size = kdump_read_uint32_vaddr(dump, NULL, conring_size);
 	producer = kdump_read_uint32_vaddr(dump, NULL, conringp);
 	consumer = kdump_read_uint32_vaddr(dump, NULL, conringc);
 
 	/* XXX size hardcoded in xen too */
-	__dump_console_ring(output, dump, NULL, "  ", conring, 16384, producer, consumer);
+	__dump_console_ring(output, dump, NULL, "  ", ring_address, ring_size, producer, consumer);
 }
 
 static void dump_domain_console_ring(FILE *o, struct dump *dump, struct domain *d)

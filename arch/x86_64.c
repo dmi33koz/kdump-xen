@@ -175,13 +175,11 @@ static int x86_64_parse_crash_regs(struct dump *dump, void *_cr, struct cpu_stat
 		/* Read current struct vcpu pointer from base of Xen stack */
 		/* XXX: if esp < HYPERVISOR_VIRT_START need to look in TSS? */
 		current = get_cpu_info(cpu->x86_64.rsp);
-		current += CPUINFO_sizeof;
-		current -= kdump_sizeof_pointer(dump);
+		/* current now points to the cpu_info struct */
 
-		cpu->nr = kdump_read_uint32_vaddr_cpu(dump, cpu, current-8);
-
+		cpu->nr = kdump_read_uint32_vaddr_cpu(dump, cpu, current+CPUINFO_processor_id);
 		cpu->physical.v_current =
-			kdump_read_pointer_vaddr_cpu(dump, cpu, current);
+			kdump_read_pointer_vaddr_cpu(dump, cpu, current+CPUINFO_current_vcpu);
 
 		if (symtab_lookup_address(dump->symtab, cpu->x86_64.rip) == __context_switch_symbol)
 			cpu->flags |= CPU_CONTEXT_SWITCH;
