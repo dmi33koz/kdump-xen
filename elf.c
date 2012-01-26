@@ -28,9 +28,12 @@
 
 #endif
 
-typedef TYPE(Ehdr) Elf_Ehdr;
-typedef TYPE(Shdr) Elf_Shdr;
-typedef TYPE(Phdr) Elf_Phdr;
+/* NOTE!!!
+ * Even on 32 bit platform we use Elf64_Ehdr and Elf64_Phdr
+ * in order to describe large memory configuration like PAE.
+ * kexec should always use --elf64-core-headers option
+ */
+
 typedef TYPE(Nhdr) Elf_Nhdr;
 typedef TYPE(Word) Elf_Word;
 
@@ -50,7 +53,7 @@ typedef TYPE(Word) Elf_Word;
 #define ELFNOTE_NEXT(_n_) (Elf_Nhdr*)(ELFNOTE_DESC(_n_) + ELFNOTE_DESCSZ(_n_))
 
 typedef struct phdr_info {
-	Elf_Phdr phdr;
+	Elf64_Phdr phdr;
 	char *data;
 	int size;
 } phdr_info_t;
@@ -61,11 +64,11 @@ typedef struct {
 } phdr_all_t;
 
 typedef struct elf_all {
-	Elf_Ehdr ehdr;
+	Elf64_Ehdr ehdr;
 	phdr_all_t phdrs;
 } elf_all_t;
 
-// global pointer to elf headers
+// global holder of saved xen elf headers
 elf_all_t elfall;
 
 // add phdr_info into elf_all.phdr_all
@@ -131,7 +134,7 @@ static void __fix_section_offsets(elf_all_t *all) {
 	phdr_info_t *pi;
 	int i;
 	// shift to the end of program headers
-	unsigned int offset = sizeof(Elf_Ehdr) + p_all->count * sizeof(Elf_Phdr);
+	unsigned int offset = sizeof(Elf64_Ehdr) + p_all->count * sizeof(Elf64_Phdr);
 
 	for (i = 0; i < p_all->count; i++) {
 		pi = &p_all->pinfos[i];
@@ -150,18 +153,18 @@ static void __write_buf(FILE *f, void *b, int size) {
 }
 
 static void __write_all_elfs(FILE *f, elf_all_t *all) {
-	Elf_Ehdr *ehdr = &all->ehdr;
+	Elf64_Ehdr *ehdr = &all->ehdr;
 	phdr_all_t *p_all = &all->phdrs;
 	int pi_index = 0;
 	phdr_info_t *p_info;
 	p_all = &all->phdrs;
 
 	// write Ehdr
-	__write_buf(f, ehdr, sizeof(Elf_Ehdr));
+	__write_buf(f, ehdr, sizeof(Elf64_Ehdr));
 	// write all Phdr(s)
 	for (pi_index = 0; pi_index < p_all->count; pi_index++) {
 		p_info = &p_all->pinfos[pi_index];
-		__write_buf(f, &p_info->phdr, sizeof(Elf_Phdr));
+		__write_buf(f, &p_info->phdr, sizeof(Elf64_Phdr));
 	}
 	// write all Phdr(s) data
 	for (pi_index = 0; pi_index < p_all->count; pi_index++) {
@@ -170,6 +173,34 @@ static void __write_all_elfs(FILE *f, elf_all_t *all) {
 			__write_buf(f, p_info->data, p_info->size);
 		}
 	}
+}
+static void __init_elf_header(Elf64_Ehdr *h) {
+	memset(h, '\0', sizeof(*h));
+
+	h->e_ident[0] = ELFMAG0;
+	h->e_ident[1] = ELFMAG1;
+	h->e_ident[2] = ELFMAG2;
+	h->e_ident[3] = ELFMAG3;
+	h->e_ident[4] = ELFCLASS64;
+	h->e_ident[5] = ELFDATA2LSB;
+	h->e_ident[6] = EV_CURRENT;
+	h->e_type = ET_CORE;
+	if (ELFSIZE == 32) {
+		h->e_machine = EM_386;
+	} else {
+		h->e_machine = EM_X86_64;
+	}
+	h->e_version = EV_CURRENT;
+	h->e_entry = DYNAMICALLY_FILLED;
+	h->e_phoff = sizeof(Elf64_Ehdr);
+	h->e_shoff = DYNAMICALLY_FILLED;
+	h->e_flags = 0;
+	h->e_ehsize = sizeof(Elf64_Ehdr);
+	h->e_phentsize = sizeof(Elf64_Phdr);
+	h->e_phnum = 0; // modify later by adding phdrs
+	h->e_shentsize = 0;
+	h->e_shnum = 0;
+	h->e_shstrndx = 0;
 }
 
 /* Allocate `dump->cpus' to handle `nr' cpus. */
@@ -279,7 +310,7 @@ static struct note_handler {
 };
 #define NR_NOTE_HANDLERS (sizeof(note_handlers)/sizeof(note_handlers[0]))
 
-static int parse_pt_note(struct dump *dump, Elf_Phdr *phdr)
+static int parse_pt_note(struct dump *dump, Elf64_Phdr *phdr)
 {
 	off64_t offset = phdr->p_offset;
 	Elf_Nhdr *note;
@@ -322,7 +353,7 @@ static int parse_pt_note(struct dump *dump, Elf_Phdr *phdr)
 	return 0;
 }
 
-static int parse_pt_load(struct dump *dump, Elf_Phdr *phdr)
+static int parse_pt_load(struct dump *dump, Elf64_Phdr *phdr)
 {
 	void *mem;
 	struct memory_extent *mext;
@@ -345,13 +376,13 @@ static int parse_pt_load(struct dump *dump, Elf_Phdr *phdr)
 }
 
 static int foreach_phdr_type(struct dump *dump,
-			     Elf_Ehdr *ehdr, Elf_Word p_type,
-			     int (*callback)(struct dump *dump, Elf_Phdr *phdr))
+			     Elf64_Ehdr *ehdr, Elf_Word p_type,
+			     int (*callback)(struct dump *dump, Elf64_Phdr *phdr))
 {
 	int i;
 
 	for (i=0; i<ehdr->e_phnum; i++) {
-		Elf_Phdr phdr;
+		Elf64_Phdr phdr;
 
 		if (kdump_read(dump, &phdr, ehdr->e_phoff + (i*sizeof(phdr)), sizeof(phdr)) != sizeof(phdr))
 		{
@@ -370,7 +401,7 @@ static int foreach_phdr_type(struct dump *dump,
 	return 0;
 }
 
-int FN(create_elf_header)(FILE *f, uint64_t start, uint64_t end, uint64_t v_start, uint64_t p_offset) {
+int FN(create_elf_header_xen)(FILE *f, uint64_t start, uint64_t end, uint64_t v_start, uint64_t p_offset) {
 	phdr_info_t *p_info;
 	fprintf(debug, "start %llx end %llx v_start %llx p_offset %llx\n", start, end, v_start, p_offset);
 
@@ -384,12 +415,53 @@ int FN(create_elf_header)(FILE *f, uint64_t start, uint64_t end, uint64_t v_star
 	return ftell(f);
 }
 
+int FN(create_elf_header_dom)(FILE *f, struct dump *dump, int dom_id) {
+	struct elf_all all;
+	// NOTE! elf header is always 64 bit type even for 32 bit platform
+	// but e_machine is different for 32/64
+	Elf64_Ehdr *ehdr;
+	struct cpu_state *vcpu;
+	char prs[1024]; // ELF_Prstatus -- platform dependent
+	struct domain *d;
+	struct phdr_info *p_info;
+	int prstatus_size;
+	fprintf(debug, "%s: domid %d\n", __FUNCTION__, dom_id);
+
+	d = &dump->domains[dom_id];
+
+	memset(&all, '\0', sizeof(all));
+
+	// initialize elf header
+	ehdr = &all.ehdr;
+	__init_elf_header(ehdr);
+
+	// add note(s) program header
+	p_info = __add_phdr_info(&all, PT_NOTE, 0);
+	// for each domain cpu add "CORE" note
+	for_each_vcpu(d, vcpu) {
+		prstatus_size = kdump_set_prstatus(d, prs, vcpu);
+		fprintf(debug, "adding note ELF_Prstatus size = 0x%x\n", prstatus_size);
+		__add_note(p_info, "CORE", NT_PRSTATUS, (char*) &prs, prstatus_size);
+	}
+	// add memory program header
+	p_info = __add_phdr_info(&all, PT_LOAD, PF_R | PF_W | PF_X);
+	// setup header
+	p_info->phdr.p_vaddr = 0xc0000000;
+	p_info->phdr.p_paddr = 0;
+	p_info->phdr.p_filesz = d->shared_info.max_pfn << PAGE_SHIFT;
+	p_info->phdr.p_memsz = p_info->phdr.p_filesz;
+
+	__fix_section_offsets(&all);
+	__write_all_elfs(f, &all);
+	return ftell(f);
+}
+
 int FN(parse_dump)(struct dump *dump)
 {
 	extern struct arch arch_x86_32;
 	extern struct arch arch_x86_64;
-	Elf_Ehdr ehdr;
-	Elf_Ehdr *ehdr_out = &elfall.ehdr;
+	Elf64_Ehdr ehdr;
+	Elf64_Ehdr *ehdr_out = &elfall.ehdr;
 
 	memset(&elfall, '\0', sizeof(elfall));
 
@@ -403,8 +475,6 @@ int FN(parse_dump)(struct dump *dump)
 	ehdr_out->e_shentsize = 0;
 	ehdr_out->e_shnum = 0;
 	ehdr_out->e_shstrndx = 0;
-	fprintf(debug, "elf header in:\n");
-	//hex_dump(0, &ehdr, sizeof(ehdr));
 
 	dump->e_machine = ehdr.e_machine;
 	switch (dump->e_machine) {

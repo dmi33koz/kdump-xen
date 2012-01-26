@@ -464,7 +464,7 @@ static void dump_xen_memory(struct dump *dump, const char *file)
 	FILE *mem;
 	int elf_header_size = 0;
 
-	extern int create_elf_header_64(FILE *f, uint64_t start, uint64_t end, uint64_t v_start,uint64_t p_offset);
+	extern int create_elf_header_xen_64(FILE *f, uint64_t start, uint64_t end, uint64_t v_start,uint64_t p_offset);
 
 	fprintf(output, "Xen Physical Memory:\n");
 
@@ -494,7 +494,7 @@ static void dump_xen_memory(struct dump *dump, const char *file)
 	fprintf(output, "  Writing to: %s\n", file);
 	fprintf(output, "\n");
 
-	elf_header_size = create_elf_header_64(mem, start, end,  XEN_virt_start, XEN_page_offset);
+	elf_header_size = create_elf_header_xen(dump, mem, start, end,  XEN_virt_start, XEN_page_offset);
 	offset = elf_header_size;
 
 	for (addr = start; addr < end; addr += PAGE_SIZE) {
@@ -554,9 +554,7 @@ static void dump_domain_memory(struct dump *dump, struct domain *d, const char *
 		return;
 	}
 
-	if (dump->compat_arch && d->has_32bit_shinfo) {
-		create_elf_header_32_dom(mem, dump, d->domid);
-	}
+	create_elf_header_dom(mem, dump, d->domid);
 
 	fprintf(output, "  Psuedo-physical address range: %016"PRIxPADDR"-%016"PRIxPADDR"\n",
 		(paddr_t)0, (paddr_t)(max_pfn << PAGE_SHIFT));

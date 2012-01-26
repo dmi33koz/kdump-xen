@@ -3,7 +3,7 @@
 #include <elf.h>
 #include <stdio.h>
 #include <string.h>
-
+#include <stdlib.h>
 #include "kdump.h"
 #include "memory.h"
 #include "symbols.h"
@@ -131,30 +131,37 @@ static int x86_64_parse_prstatus(struct dump *dump, void *_prs, struct cpu_state
 	cpu->flags |= CPU_PHYSICAL;
 	cpu->flags |= CPU_CORE_STATE;
 
-	cpu->x86_64.r15 	= prs->pr_reg[PR_REG_r15];
-	cpu->x86_64.r14 	= prs->pr_reg[PR_REG_r14];
-	cpu->x86_64.r13 	= prs->pr_reg[PR_REG_r13];
-	cpu->x86_64.r12 	= prs->pr_reg[PR_REG_r12];
-	cpu->x86_64.rbp 	= prs->pr_reg[PR_REG_rbp];
-	cpu->x86_64.rbx 	= prs->pr_reg[PR_REG_rbx];
-	cpu->x86_64.r11 	= prs->pr_reg[PR_REG_r11];
-	cpu->x86_64.r10 	= prs->pr_reg[PR_REG_r10];
-	cpu->x86_64.r9 		= prs->pr_reg[PR_REG_r9];
-	cpu->x86_64.r8 		= prs->pr_reg[PR_REG_r8];
-	cpu->x86_64.rax 	= prs->pr_reg[PR_REG_rax];
-	cpu->x86_64.rcx 	= prs->pr_reg[PR_REG_rcx];
-	cpu->x86_64.rdx 	= prs->pr_reg[PR_REG_rdx];
-	cpu->x86_64.rsi 	= prs->pr_reg[PR_REG_rsi];
-	cpu->x86_64.rdi 	= prs->pr_reg[PR_REG_rdi];
-	cpu->x86_64.orig_rax 	= prs->pr_reg[PR_REG_orig_rax];
-	cpu->x86_64.rip 	= prs->pr_reg[PR_REG_rip];
-	cpu->x86_64.cs 		= prs->pr_reg[PR_REG_cs];
-	cpu->x86_64.rflags 	= prs->pr_reg[PR_REG_rflags];
-	cpu->x86_64.rsp 	= prs->pr_reg[PR_REG_rsp];
-	cpu->x86_64.ss	 	= prs->pr_reg[PR_REG_ss];
-	cpu->x86_64.fs	 	= prs->pr_reg[PR_REG_fs];
-	cpu->x86_64.gs 		= prs->pr_reg[PR_REG_gs];
+	cpu->x86_regs.r15 	= prs->pr_reg[PR_REG_r15];
+	cpu->x86_regs.r14 	= prs->pr_reg[PR_REG_r14];
+	cpu->x86_regs.r13 	= prs->pr_reg[PR_REG_r13];
+	cpu->x86_regs.r12 	= prs->pr_reg[PR_REG_r12];
+	cpu->x86_regs.rbp 	= prs->pr_reg[PR_REG_rbp];
+	cpu->x86_regs.rbx 	= prs->pr_reg[PR_REG_rbx];
+	cpu->x86_regs.r11 	= prs->pr_reg[PR_REG_r11];
+	cpu->x86_regs.r10 	= prs->pr_reg[PR_REG_r10];
+	cpu->x86_regs.r9 		= prs->pr_reg[PR_REG_r9];
+	cpu->x86_regs.r8 		= prs->pr_reg[PR_REG_r8];
+	cpu->x86_regs.rax 	= prs->pr_reg[PR_REG_rax];
+	cpu->x86_regs.rcx 	= prs->pr_reg[PR_REG_rcx];
+	cpu->x86_regs.rdx 	= prs->pr_reg[PR_REG_rdx];
+	cpu->x86_regs.rsi 	= prs->pr_reg[PR_REG_rsi];
+	cpu->x86_regs.rdi 	= prs->pr_reg[PR_REG_rdi];
+	cpu->x86_regs.rorig_rax 	= prs->pr_reg[PR_REG_orig_rax];
+	cpu->x86_regs.rip 	= prs->pr_reg[PR_REG_rip];
+	cpu->x86_regs.cs 		= prs->pr_reg[PR_REG_cs];
+	cpu->x86_regs.rflags 	= prs->pr_reg[PR_REG_rflags];
+	cpu->x86_regs.rsp 	= prs->pr_reg[PR_REG_rsp];
+	cpu->x86_regs.ss	 	= prs->pr_reg[PR_REG_ss];
+	cpu->x86_regs.fs	 	= prs->pr_reg[PR_REG_fs];
+	cpu->x86_regs.gs 		= prs->pr_reg[PR_REG_gs];
 
+	return 0;
+}
+
+int x86_64_set_prstatus(struct domain *d, void *_prs, struct cpu_state *cpu)
+{
+	fprintf(debug, "%s function not implemented.\n", __FUNCTION__);
+	exit(-1);
 	return 0;
 }
 
@@ -164,24 +171,24 @@ static int x86_64_parse_crash_regs(struct dump *dump, void *_cr, struct cpu_stat
 	maddr_t current;
 
 	cpu->flags |= CPU_EXTD_STATE;
-
-	cpu->x86_64.cr[0] = cr->cr0;
-	cpu->x86_64.cr[2] = cr->cr2;
-	cpu->x86_64.cr[3] = cr->cr3;
-	cpu->x86_64.cr[4] = cr->cr4;
+	
+	cpu->x86_regs.cr[0] = cr->cr0;
+	cpu->x86_regs.cr[2] = cr->cr2;
+	cpu->x86_regs.cr[3] = cr->cr3;
+	cpu->x86_regs.cr[4] = cr->cr4;
 
 	if (have_required_symbols)
 	{
 		/* Read current struct vcpu pointer from base of Xen stack */
 		/* XXX: if esp < HYPERVISOR_VIRT_START need to look in TSS? */
-		current = get_cpu_info(cpu->x86_64.rsp);
+		current = get_cpu_info(cpu->x86_regs.rsp);
 		/* current now points to the cpu_info struct */
 
 		cpu->nr = kdump_read_uint32_vaddr_cpu(dump, cpu, current+CPUINFO_processor_id);
 		cpu->physical.v_current =
 			kdump_read_pointer_vaddr_cpu(dump, cpu, current+CPUINFO_current_vcpu);
 
-		if (symtab_lookup_address(dump->symtab, cpu->x86_64.rip) == __context_switch_symbol)
+		if (symtab_lookup_address(dump->symtab, cpu->x86_regs.rip) == __context_switch_symbol)
 			cpu->flags |= CPU_CONTEXT_SWITCH;
 
 
@@ -238,14 +245,14 @@ static int x86_64_parse_vcpu(struct dump *dump, struct cpu_state *cpu, vaddr_t v
 			cpu->flags |= CPU_RUNNING;
 
 		if (kdump_read_vaddr_cpu(dump, pcpu,
-					 get_cpu_info(pcpu->x86_64.rsp),
+					 get_cpu_info(pcpu->x86_regs.rsp),
 					 &user_regs, sizeof(struct cpu_user_regs_x86_64))
 		    != sizeof(struct cpu_user_regs_x86_64))
 			return 1;
 
 		cpu->flags |= CPU_EXTD_STATE;
 		for(i=0; i<8; i++)
-			cpu->x86_64.cr[i] = pcpu->x86_64.cr[i];
+			cpu->x86_regs.cr[i] = pcpu->x86_regs.cr[i];
 	}
 	else
 	{
@@ -268,29 +275,30 @@ static int x86_64_parse_vcpu(struct dump *dump, struct cpu_state *cpu, vaddr_t v
 			cpu->flags |= CPU_CONTEXT_SWITCH;
 
 		cpu->flags |= CPU_EXTD_STATE;
-		cpu->x86_64.cr[3] = *(uint64_t*)&vcpu[VCPU_cr3];
+		cpu->x86_regs.cr[3] = *(uint64_t*)&vcpu[VCPU_cr3];
 	}
 
-	cpu->x86_64.rip = user_regs.eip;
-	cpu->x86_64.cs = user_regs.cs;
-	cpu->x86_64.rflags = user_regs.eflags;
+	cpu->x86_regs.rip = user_regs.eip;
+	cpu->x86_regs.cs = user_regs.cs;
+	cpu->x86_regs.rflags = user_regs.eflags;
 
-	cpu->x86_64.rax = user_regs.eax;
-	cpu->x86_64.rbx = user_regs.ebx;
-	cpu->x86_64.rcx = user_regs.ecx;
-	cpu->x86_64.rdx = user_regs.edx;
+	cpu->x86_regs.rax = user_regs.eax;
+	cpu->x86_regs.rbx = user_regs.ebx;
+	cpu->x86_regs.rcx = user_regs.ecx;
+	cpu->x86_regs.rdx = user_regs.edx;
 
-	cpu->x86_64.rsi = user_regs.esi;
-	cpu->x86_64.rdi = user_regs.edi;
-	cpu->x86_64.rbp = user_regs.ebp;
-	cpu->x86_64.rsp = user_regs.esp;
+	cpu->x86_regs.rsi = user_regs.esi;
+	cpu->x86_regs.rdi = user_regs.edi;
+	cpu->x86_regs.rbp = user_regs.ebp;
+	cpu->x86_regs.rsp = user_regs.esp;
 
-	cpu->x86_64.ds = user_regs.ds;
-	cpu->x86_64.es = user_regs.es;
-	cpu->x86_64.fs = user_regs.fs;
-	cpu->x86_64.gs = user_regs.gs;
-	cpu->x86_64.ss = user_regs.ss;
-	cpu->x86_64.cs = user_regs.cs;
+	cpu->x86_regs.ds = user_regs.ds;
+	cpu->x86_regs.es = user_regs.es;
+	cpu->x86_regs.fs = user_regs.fs;
+	cpu->x86_regs.gs = user_regs.gs;
+	cpu->x86_regs.ss = user_regs.ss;
+	cpu->x86_regs.cs = user_regs.cs;
+	fprintf(debug, "%s user_regs.eflags 0x%llx\n", __FUNCTION__, user_regs.eflags);
 
 	return 0;
 }
@@ -325,34 +333,34 @@ static int x86_64_print_cpu_state(FILE *o, struct dump *dump, struct cpu_state *
 	if (cpu->flags & CPU_CORE_STATE)
 	{
 		len += fprintf(o, "\tRIP:    %04x:[<%016"PRIx64">]\n",
-			       cpu->x86_64.cs, cpu->x86_64.rip);
-		len += fprintf(o, "\tRFLAGS: %016"PRIx64"\n", cpu->x86_64.rflags);
+			       cpu->x86_regs.cs, cpu->x86_regs.rip);
+		len += fprintf(o, "\tRFLAGS: %016"PRIx64"\n", cpu->x86_regs.rflags);
 		len += fprintf(o, "\trax: %016"PRIx64"   rbx: %016"PRIx64"   rcx: %016"PRIx64"\n",
-			       cpu->x86_64.rax, cpu->x86_64.rbx, cpu->x86_64.rcx);
+			       cpu->x86_regs.rax, cpu->x86_regs.rbx, cpu->x86_regs.rcx);
 		len += fprintf(o, "\trdx: %016"PRIx64"   rsi: %016"PRIx64"   rdi: %016"PRIx64"\n",
-			       cpu->x86_64.rdx, cpu->x86_64.rsi, cpu->x86_64.rdi);
+			       cpu->x86_regs.rdx, cpu->x86_regs.rsi, cpu->x86_regs.rdi);
 		len += fprintf(o, "\trbp: %016"PRIx64"   rsp: %016"PRIx64"   r8:  %016"PRIx64"\n",
-			       cpu->x86_64.rbp, cpu->x86_64.rsp, cpu->x86_64.r8);
+			       cpu->x86_regs.rbp, cpu->x86_regs.rsp, cpu->x86_regs.r8);
 		len += fprintf(o, "\tr9:  %016"PRIx64"   r10: %016"PRIx64"   r11: %016"PRIx64"\n",
-			       cpu->x86_64.r9,  cpu->x86_64.r10, cpu->x86_64.r11);
+			       cpu->x86_regs.r9,  cpu->x86_regs.r10, cpu->x86_regs.r11);
 		len += fprintf(o, "\tr12: %016"PRIx64"   r13: %016"PRIx64"   r14: %016"PRIx64"\n",
-			       cpu->x86_64.r12, cpu->x86_64.r13, cpu->x86_64.r14);
+			       cpu->x86_regs.r12, cpu->x86_regs.r13, cpu->x86_regs.r14);
 		len += fprintf(o, "\tr15: %016"PRIx64"\n",
-			       cpu->x86_64.r15);
+			       cpu->x86_regs.r15);
 	}
 	if (cpu->flags & CPU_EXTD_STATE)
 	{
 		len += fprintf(o, "\tcr0: %016"PRIx64"   cr4: %016"PRIx64"\n",
-			       cpu->x86_64.cr[0], cpu->x86_64.cr[4]);
+			       cpu->x86_regs.cr[0], cpu->x86_regs.cr[4]);
 		len += fprintf(o, "\tcr3: %016"PRIx64"   cr2: %016"PRIx64"\n",
-			       cpu->x86_64.cr[3], cpu->x86_64.cr[2]);
+			       cpu->x86_regs.cr[3], cpu->x86_regs.cr[2]);
 	}
 	if (cpu->flags & CPU_CORE_STATE)
 	{
 		len += fprintf(o, "\tds: %04x   es: %04x   fs: %04x   gs: %04x   "
 			       "ss: %04x   cs: %04x\n",
-			       cpu->x86_64.ds, cpu->x86_64.es, cpu->x86_64.fs,
-			       cpu->x86_64.gs, cpu->x86_64.ss, cpu->x86_64.cs);
+			       cpu->x86_regs.ds, cpu->x86_regs.es, cpu->x86_regs.fs,
+			       cpu->x86_regs.gs, cpu->x86_regs.ss, cpu->x86_regs.cs);
 	}
 
 	fprintf(o, "\n");
@@ -439,11 +447,11 @@ static int x86_64_print_cpu_state(FILE *o, struct dump *dump, struct cpu_state *
 
 static vaddr_t x86_64_stack(struct dump *dump, struct cpu_state *cpu)
 {
-	return cpu->x86_64.rsp;
+	return cpu->x86_regs.rsp;
 }
 static vaddr_t x86_64_instruction_pointer(struct dump *dump, struct cpu_state *cpu)
 {
-	return cpu->x86_64.rip;
+	return cpu->x86_regs.rip;
 }
 
 static maddr_t x86_64_virt_to_mach(struct dump *dump, struct cpu_state *cpu, uint64_t virt)
@@ -455,13 +463,13 @@ static maddr_t x86_64_virt_to_mach(struct dump *dump, struct cpu_state *cpu, uin
 	else
 		page_offset = 0xFFFF830000000000ULL;
 
-	if ((cpu->flags&CPU_EXTD_STATE) && cpu->x86_64.cr[3]) {
+	if ((cpu->flags&CPU_EXTD_STATE) && cpu->x86_regs.cr[3]) {
 		extern int x86_virt_to_mach(struct dump *dump, uint64_t cr3,
 					    int paging_levels,
 					    vaddr_t virt, maddr_t *maddr);
 		maddr_t maddr;
 
-		if(x86_virt_to_mach(dump, cpu->x86_64.cr[3], 4, virt, &maddr))
+		if(x86_virt_to_mach(dump, cpu->x86_regs.cr[3], 4, virt, &maddr))
 			goto page_offset;
 
 		return maddr;
@@ -480,11 +488,8 @@ static maddr_t x86_64_virt_to_mach(struct dump *dump, struct cpu_state *cpu, uin
 struct arch arch_x86_64 = {
 	.sizeof_pointer = 8,
 	.sizeof_pfn = 8,
-
 	.sizeof_percpu = 1<<12,
-
 	.heap_limits = x86_64_heap_limits,
-
 	.parse_prstatus = x86_64_parse_prstatus,
 	.parse_crash_regs = x86_64_parse_crash_regs,
 	.parse_vcpu = x86_64_parse_vcpu,
@@ -492,6 +497,5 @@ struct arch arch_x86_64 = {
 	.print_cpu_state = x86_64_print_cpu_state,
 	.stack = x86_64_stack,
 	.instruction_pointer = x86_64_instruction_pointer,
-
 	.virt_to_mach = x86_64_virt_to_mach,
 };

@@ -166,6 +166,35 @@ struct dump *open_dump(const char *fn, struct symbol_table *xen_symtab,
 	close_dump(dump);
 	return NULL;
 }
+
+int create_elf_header_xen(struct dump *dump, FILE *f, uint64_t start, uint64_t end, uint64_t v_start, uint64_t p_offset) {
+	extern int create_elf_header_xen_32(FILE *f, uint64_t start, uint64_t end, uint64_t v_start, uint64_t p_offset);
+	extern int create_elf_header_xen_64(FILE *f, uint64_t start, uint64_t end, uint64_t v_start, uint64_t p_offset);
+	// dump->e_machine defines xen platform - 32/64
+	switch (dump->e_machine) {
+	case EM_386:
+		return create_elf_header_xen_32(f, start, end, v_start, p_offset);
+	case EM_X86_64:
+		return create_elf_header_xen_64(f, start, end, v_start, p_offset);
+	default:
+		fprintf(debug, "create_elf_header_xen: unknown machine class %d\n", dump->e_machine);
+		return 1;
+	}
+}
+
+int create_elf_header_dom(FILE *f, struct dump *dump, int dom_id) {
+	extern int create_elf_header_dom_32(FILE *f, struct dump *dump, int dom_id);
+	extern int create_elf_header_dom_64(FILE *f, struct dump *dump, int dom_id);
+	struct domain *d = &dump->domains[dom_id];
+	// FIXME it works but we better check vcpu bitness
+	if (d->has_32bit_shinfo) {
+		return create_elf_header_dom_32(f, dump, dom_id);
+	} else {
+		return create_elf_header_dom_64(f, dump, dom_id);
+	}
+	return 0;
+}
+
 void hex_dump(int offset, void *ptr, int size) {
 	char *data = ptr;
 	int mask = 15;

@@ -14,7 +14,7 @@ DEPS     = .*.d arch/.*.d
 
 LDFLAGS := -g
 
-OBJS := main.o kdump.o elf32.o elf64.o symbols.o memory.o domain.o dom_elf32.o arch/x86.o arch/x86_32.o arch/x86_64.o
+OBJS := main.o kdump.o elf32.o elf64.o symbols.o memory.o domain.o arch/x86.o arch/x86_32.o arch/x86_64.o
 
 all: kdump
 kdump: $(OBJS)

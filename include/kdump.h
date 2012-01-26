@@ -22,6 +22,11 @@ struct cpu_state {
 #define CPU_RUNNING       1<<3 /* VCPU is currently running */
 #define CPU_CONTEXT_SWITCH 1<<4 /* Is currently involved in a context switch. */
 
+	/* Anonymous union includes both 32- and 64-bit names (e.g., eax/rax). */
+#define __KDUMP_REG(name) union { \
+      uint64_t r ## name, e ## name; \
+      uint32_t _e ## name; \
+}
 	int nr;
 
 	union {
@@ -36,58 +41,38 @@ struct cpu_state {
 			uint64_t flags, arch_flags;
 		} virtual;
 	};
+	struct {
+		// x86_64 only
+		uint64_t r8;
+		uint64_t r9;
+		uint64_t r10;
+		uint64_t r11;
+		uint64_t r12;
+		uint64_t r13;
+		uint64_t r14;
+		uint64_t r15;
+		// common names
+		__KDUMP_REG(bx);
+		__KDUMP_REG(cx);
+		__KDUMP_REG(dx);
+		__KDUMP_REG(si);
+		__KDUMP_REG(di);
+		__KDUMP_REG(bp);
+		__KDUMP_REG(ax);
+		__KDUMP_REG(ip);
+		__KDUMP_REG(orig_rax);
+		uint16_t cs;
+		__KDUMP_REG(flags);
+		__KDUMP_REG(sp);
+		uint16_t ss;
+		uint16_t es;
+		uint16_t ds;
+		uint16_t fs;
+		uint16_t gs;
 
-	union {
-		struct {
-			uint32_t ebx;
-			uint32_t ecx;
-			uint32_t edx;
-			uint32_t esi;
-			uint32_t edi;
-			uint32_t ebp;
-			uint32_t eax;
-			uint16_t ds;
-			uint16_t es;
-			uint16_t fs;
-			uint16_t gs;
-			uint32_t orig_eax;
-			uint32_t eip;
-			uint16_t cs;
-			uint32_t eflags;
-			uint32_t esp;
-			uint16_t ss;
-			uint32_t cr[8];
-		} x86_32;
-		struct {
-/* XXX check this */
-			uint64_t r15;
-			uint64_t r14;
-			uint64_t r13;
-			uint64_t r12;
-			uint64_t r11;
-			uint64_t r10;
-			uint64_t r9;
-			uint64_t r8;
-			uint64_t rbx;
-			uint64_t rcx;
-			uint64_t rdx;
-			uint64_t rsi;
-			uint64_t rdi;
-			uint64_t rbp;
-			uint64_t rax;
-			uint16_t ds;
-			uint16_t es;
-			uint16_t fs;
-			uint16_t gs;
-			uint64_t orig_rax;
-			uint64_t rip;
-			uint16_t cs;
-			uint64_t rflags;
-			uint64_t rsp;
-			uint16_t ss;
-			uint64_t cr[8];
-		} x86_64;
-	};
+		uint64_t cr[8];
+	} x86_regs;
+
 };
 
 struct memory_extent {
@@ -136,6 +121,10 @@ struct arch {
 	 * isn't possible.
 	 */
 	maddr_t (*virt_to_mach)(struct dump *dump, struct cpu_state *cpu, vaddr_t virt);
+	/* Creates elf header for xen meory dump
+	 */
+	int (*create_elf_header_xen)(FILE *f, uint64_t start, uint64_t end, uint64_t v_start, uint64_t p_offset);
+
 };
 
 struct domain {
@@ -212,6 +201,18 @@ static inline vaddr_t kdump_parse_prstatus(struct dump *dump, void *prs, struct 
 {
 	return dump->_arch->parse_prstatus(dump, prs, cpu);
 }
+
+static inline vaddr_t kdump_set_prstatus(struct domain *d, void *prs, struct cpu_state *cpu)
+{
+	extern int x86_32_set_prstatus(struct domain *d, void *_prs, struct cpu_state *cpu);
+	extern int x86_64_set_prstatus(struct domain *d, void *_prs, struct cpu_state *cpu);
+	if (d->has_32bit_shinfo) {
+		return x86_32_set_prstatus(d, prs, cpu);
+	} else {
+		return x86_64_set_prstatus(d, prs, cpu);
+	}
+}
+
 static inline vaddr_t kdump_parse_crash_regs(struct dump *dump, void *note, struct cpu_state *cpu)
 {
 	return dump->_arch->parse_crash_regs(dump, note, cpu);
@@ -303,6 +304,8 @@ void free_domain(struct domain *domain);
 
 void hex_dump(int offset, void *ptr, int size);
 
-extern int create_elf_header_32_dom(FILE *f, struct dump *dump, int dom_id);
+extern int create_elf_header_xen(struct dump *dump, FILE *f, uint64_t start, uint64_t end, uint64_t v_start, uint64_t p_offset);
+
+extern int create_elf_header_dom(FILE *f, struct dump *dump, int dom_id);
 
 #endif

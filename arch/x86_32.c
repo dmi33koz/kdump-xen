@@ -110,28 +110,54 @@ static int x86_32_parse_prstatus(struct dump *dump, void *_prs, struct cpu_state
 	cpu->flags |= CPU_PHYSICAL;
 	cpu->flags |= CPU_CORE_STATE;
 
-	cpu->x86_32.eip = prs->pr_reg[PR_REG_EIP];
-	cpu->x86_32.cs = prs->pr_reg[PR_REG_CS];
-	cpu->x86_32.eflags = prs->pr_reg[PR_REG_EFLAGS];
+	cpu->x86_regs.eip = prs->pr_reg[PR_REG_EIP];
+	cpu->x86_regs.cs = prs->pr_reg[PR_REG_CS];
+	cpu->x86_regs.eflags = prs->pr_reg[PR_REG_EFLAGS];
 
-	cpu->x86_32.eax = prs->pr_reg[PR_REG_EAX];
-	cpu->x86_32.ebx = prs->pr_reg[PR_REG_EBX];
-	cpu->x86_32.ecx = prs->pr_reg[PR_REG_ECX];
-	cpu->x86_32.edx = prs->pr_reg[PR_REG_EDX];
+	cpu->x86_regs.eax = prs->pr_reg[PR_REG_EAX];
+	cpu->x86_regs.ebx = prs->pr_reg[PR_REG_EBX];
+	cpu->x86_regs.ecx = prs->pr_reg[PR_REG_ECX];
+	cpu->x86_regs.edx = prs->pr_reg[PR_REG_EDX];
 
-	cpu->x86_32.esi = prs->pr_reg[PR_REG_ESI];
-	cpu->x86_32.edi = prs->pr_reg[PR_REG_EDI];
-	cpu->x86_32.ebp = prs->pr_reg[PR_REG_EBP];
-	cpu->x86_32.esp = prs->pr_reg[PR_REG_ESP];
+	cpu->x86_regs.esi = prs->pr_reg[PR_REG_ESI];
+	cpu->x86_regs.edi = prs->pr_reg[PR_REG_EDI];
+	cpu->x86_regs.ebp = prs->pr_reg[PR_REG_EBP];
+	cpu->x86_regs.esp = prs->pr_reg[PR_REG_ESP];
 
-	cpu->x86_32.ds = prs->pr_reg[PR_REG_DS];
-	cpu->x86_32.es = prs->pr_reg[PR_REG_ES],
-	cpu->x86_32.fs = prs->pr_reg[PR_REG_FS];
-	cpu->x86_32.gs = prs->pr_reg[PR_REG_GS],
-	cpu->x86_32.ss = prs->pr_reg[PR_REG_SS];
-	cpu->x86_32.cs = prs->pr_reg[PR_REG_CS];
+	cpu->x86_regs.ds = prs->pr_reg[PR_REG_DS];
+	cpu->x86_regs.es = prs->pr_reg[PR_REG_ES],
+	cpu->x86_regs.fs = prs->pr_reg[PR_REG_FS];
+	cpu->x86_regs.gs = prs->pr_reg[PR_REG_GS],
+	cpu->x86_regs.ss = prs->pr_reg[PR_REG_SS];
+	cpu->x86_regs.cs = prs->pr_reg[PR_REG_CS];
 
 	return 0;
+}
+
+int x86_32_set_prstatus(struct domain *d, void *_prs, struct cpu_state *cpu) {
+	ELF_Prstatus *prs = _prs;
+	memset(prs, '\0', sizeof(ELF_Prstatus));
+	prs->pr_reg[0] = cpu->x86_regs._ebx;
+	prs->pr_reg[1] = cpu->x86_regs._ecx;
+	prs->pr_reg[2] = cpu->x86_regs._edx;
+	prs->pr_reg[3] = cpu->x86_regs._esi;
+	prs->pr_reg[4] = cpu->x86_regs._edi;
+	prs->pr_reg[5] = cpu->x86_regs._ebp;
+	prs->pr_reg[6] = cpu->x86_regs._eax;
+	prs->pr_reg[7] = cpu->x86_regs.ds;
+	prs->pr_reg[8] = cpu->x86_regs.es;
+	prs->pr_reg[9] = cpu->x86_regs.fs;
+	prs->pr_reg[10] = cpu->x86_regs.gs;
+	prs->pr_reg[11] = cpu->x86_regs._eorig_rax;
+	prs->pr_reg[12] = cpu->x86_regs._eip;
+	prs->pr_reg[13] = cpu->x86_regs.cs;
+	prs->pr_reg[14] = cpu->x86_regs._eflags;
+	prs->pr_reg[15] = cpu->x86_regs._esp;
+	prs->pr_reg[16] = cpu->x86_regs.ss;
+	fprintf(debug, "cpu registers:\n");
+	//hex_dump(0, prs->pr_reg, 4 * 17);
+
+	return sizeof(ELF_Prstatus);
 }
 
 static int x86_32_parse_crash_regs(struct dump *dump, void *_cr, struct cpu_state *cpu)
@@ -141,16 +167,16 @@ static int x86_32_parse_crash_regs(struct dump *dump, void *_cr, struct cpu_stat
 
 	cpu->flags |= CPU_EXTD_STATE;
 
-	cpu->x86_32.cr[0] = cr->cr0;
-	cpu->x86_32.cr[2] = cr->cr2;
-	cpu->x86_32.cr[3] = cr->cr3;
-	cpu->x86_32.cr[4] = cr->cr4;
+	cpu->x86_regs.cr[0] = cr->cr0;
+	cpu->x86_regs.cr[2] = cr->cr2;
+	cpu->x86_regs.cr[3] = cr->cr3;
+	cpu->x86_regs.cr[4] = cr->cr4;
 
 	if (have_required_symbols)
 	{
 		/* Read current struct vcpu pointer from base of Xen stack */
 		/* XXX: if esp < HYPERVISOR_VIRT_START need to look in TSS? */
-		current = get_cpu_info(cpu->x86_32.esp);
+		current = get_cpu_info(cpu->x86_regs.esp);
 		current += CPUINFO_sizeof;
 		current -= kdump_sizeof_pointer(dump);
 
@@ -159,7 +185,7 @@ static int x86_32_parse_crash_regs(struct dump *dump, void *_cr, struct cpu_stat
 		cpu->physical.v_current =
 			kdump_read_pointer_vaddr_cpu(dump, cpu, current);
 
-		if (symtab_lookup_address(dump->symtab, cpu->x86_32.eip) == __context_switch_symbol)
+		if (symtab_lookup_address(dump->symtab, cpu->x86_regs.eip) == __context_switch_symbol)
 			cpu->flags |= CPU_CONTEXT_SWITCH;
 	}
 
@@ -211,14 +237,14 @@ static int x86_32_parse_vcpu(struct dump *dump, struct cpu_state *cpu, vaddr_t v
 			cpu->flags |= CPU_RUNNING;
 
 		if (kdump_read_vaddr_cpu(dump, pcpu,
-					 get_cpu_info(pcpu->x86_32.esp),
+					 get_cpu_info(pcpu->x86_regs.esp),
 					 &user_regs, sizeof(struct cpu_user_regs_x86_32))
 		    != sizeof(struct cpu_user_regs_x86_32))
 			return 1;
 
 		cpu->flags |= CPU_EXTD_STATE;
 		for(i=0; i<8; i++)
-			cpu->x86_32.cr[i] = pcpu->x86_32.cr[i];
+			cpu->x86_regs.cr[i] = pcpu->x86_regs.cr[i];
 	}
 	else
 	{
@@ -241,30 +267,31 @@ static int x86_32_parse_vcpu(struct dump *dump, struct cpu_state *cpu, vaddr_t v
 			cpu->flags |= CPU_CONTEXT_SWITCH;
 
 		cpu->flags |= CPU_EXTD_STATE;
-		//cpu->x86_32.cr[3] = *(uint32_t*)&vcpu[VCPU_guest_table];
-		cpu->x86_32.cr[3] = *(uint32_t*)&vcpu[VCPU_cr3];
+		//cpu->x86_regs.cr[3] = *(uint32_t*)&vcpu[VCPU_guest_table];
+		cpu->x86_regs.cr[3] = *(uint32_t*)&vcpu[VCPU_cr3];
 	}
 
-	cpu->x86_32.eip = user_regs.eip;
-	cpu->x86_32.cs = user_regs.cs;
-	cpu->x86_32.eflags = user_regs.eflags;
+	cpu->x86_regs.eip = user_regs.eip;
+	cpu->x86_regs.cs = user_regs.cs;
+	cpu->x86_regs.eflags = user_regs.eflags;
 
-	cpu->x86_32.eax = user_regs.eax;
-	cpu->x86_32.ebx = user_regs.ebx;
-	cpu->x86_32.ecx = user_regs.ecx;
-	cpu->x86_32.edx = user_regs.edx;
+	cpu->x86_regs.eax = user_regs.eax;
+	cpu->x86_regs.ebx = user_regs.ebx;
+	cpu->x86_regs.ecx = user_regs.ecx;
+	cpu->x86_regs.edx = user_regs.edx;
 
-	cpu->x86_32.esi = user_regs.esi;
-	cpu->x86_32.edi = user_regs.edi;
-	cpu->x86_32.ebp = user_regs.ebp;
-	cpu->x86_32.esp = user_regs.esp;
+	cpu->x86_regs.esi = user_regs.esi;
+	cpu->x86_regs.edi = user_regs.edi;
+	cpu->x86_regs.ebp = user_regs.ebp;
+	cpu->x86_regs.esp = user_regs.esp;
 
-	cpu->x86_32.ds = user_regs.ds;
-	cpu->x86_32.es = user_regs.es;
-	cpu->x86_32.fs = user_regs.fs;
-	cpu->x86_32.gs = user_regs.gs;
-	cpu->x86_32.ss = user_regs.ss;
-	cpu->x86_32.cs = user_regs.cs;
+	cpu->x86_regs.ds = user_regs.ds;
+	cpu->x86_regs.es = user_regs.es;
+	cpu->x86_regs.fs = user_regs.fs;
+	cpu->x86_regs.gs = user_regs.gs;
+	cpu->x86_regs.ss = user_regs.ss;
+	cpu->x86_regs.cs = user_regs.cs;
+	fprintf(debug, "%s user_regs.eflags 0x%x\n", __FUNCTION__, user_regs.eflags);
 
 	return 0;
 }
@@ -298,27 +325,27 @@ static int x86_32_print_cpu_state(FILE *o, struct dump *dump, struct cpu_state *
 	if (cpu->flags & CPU_CORE_STATE)
 	{
 		len += fprintf(o, "\tEIP:    %04x:[<%08x>] ",
-			       cpu->x86_32.cs, cpu->x86_32.eip);
-		print_symbol(o, symtab, cpu->x86_32.eip);
+			       cpu->x86_regs.cs, cpu->x86_regs._eip);
+		print_symbol(o, symtab, cpu->x86_regs.eip);
 		len += fprintf(o, "\n");
-		len += fprintf(o, "\tEFLAGS: %08x\n", cpu->x86_32.eflags);
+		len += fprintf(o, "\tEFLAGS: %08x\n", cpu->x86_regs._eflags);
 		len += fprintf(o, "\teax: %08x   ebx: %08x   ecx: %08x   edx: %08x\n",
-			       cpu->x86_32.eax, cpu->x86_32.ebx,
-			       cpu->x86_32.ecx, cpu->x86_32.edx);
+			       cpu->x86_regs._eax, cpu->x86_regs._ebx,
+			       cpu->x86_regs._ecx, cpu->x86_regs._edx);
 		len += fprintf(o, "\tesi: %08x   edi: %08x   ebp: %08x   esp: %08x\n",
-			       cpu->x86_32.esi, cpu->x86_32.edi,
-			       cpu->x86_32.ebp, cpu->x86_32.esp);
+			       cpu->x86_regs._esi, cpu->x86_regs._edi,
+			       cpu->x86_regs._ebp, cpu->x86_regs._esp);
 	}
 	if (cpu->flags & CPU_EXTD_STATE)
 	{
 		len += fprintf(o, "\tcr0: %08x   cr4: %08x   cr3: %08x   cr2: %08x\n",
-			       cpu->x86_32.cr[0], cpu->x86_32.cr[4], cpu->x86_32.cr[3], cpu->x86_32.cr[2]);
+			       (uint32_t)cpu->x86_regs.cr[0], (uint32_t)cpu->x86_regs.cr[4], (uint32_t)cpu->x86_regs.cr[3], (uint32_t)cpu->x86_regs.cr[2]);
 	}
 	if (cpu->flags & CPU_CORE_STATE)
 	{
 		len += fprintf(o, "\tds: %04x   es: %04x   fs: %04x   gs: %04x   ss: %04x   cs: %04x\n",
-			       cpu->x86_32.ds, cpu->x86_32.es, cpu->x86_32.fs,
-			       cpu->x86_32.gs, cpu->x86_32.ss, cpu->x86_32.cs);
+			       cpu->x86_regs.ds, cpu->x86_regs.es, cpu->x86_regs.fs,
+			       cpu->x86_regs.gs, cpu->x86_regs.ss, cpu->x86_regs.cs);
 	}
 
 	fprintf(o, "\n");
@@ -405,11 +432,11 @@ static int x86_32_print_cpu_state(FILE *o, struct dump *dump, struct cpu_state *
 
 static vaddr_t x86_32_stack(struct dump *dump, struct cpu_state *cpu)
 {
-	return cpu->x86_32.esp;
+	return cpu->x86_regs.esp;
 }
 static vaddr_t x86_32_instruction_pointer(struct dump *dump, struct cpu_state *cpu)
 {
-	return cpu->x86_32.eip;
+	return cpu->x86_regs.eip;
 }
 
 static maddr_t x86_32_virt_to_mach(struct dump *dump, struct cpu_state *cpu, vaddr_t virt)
@@ -421,21 +448,21 @@ static maddr_t x86_32_virt_to_mach(struct dump *dump, struct cpu_state *cpu, vad
 	else
 		page_offset = 0xFF000000;
 
-	//int paging_levels = cpu->x86_32.cr[4] & CR4_PAE ? 3 : 2;
+	//int paging_levels = cpu->x86_regs.cr[4] & CR4_PAE ? 3 : 2;
 	/* always use host paging level... */
-	int paging_levels = dump->cpus[0].x86_32.cr[4] & CR4_PAE ? 3 : 2;
+	int paging_levels = dump->cpus[0].x86_regs.cr[4] & CR4_PAE ? 3 : 2;
 
 	fprintf(debug, "translate address %"PRIxVADDR" %x %lx %d\n",
-		virt, cpu->x86_32.cr[3], cpu->flags&CPU_EXTD_STATE,
-		(cpu->flags&CPU_EXTD_STATE) && cpu->x86_32.cr[3]);
+		virt, (uint32_t)cpu->x86_regs.cr[3], cpu->flags&CPU_EXTD_STATE,
+		(cpu->flags&CPU_EXTD_STATE) && (uint32_t)cpu->x86_regs.cr[3]);
 
-	if ((cpu->flags&CPU_EXTD_STATE) && cpu->x86_32.cr[3]) {
+	if ((cpu->flags&CPU_EXTD_STATE) && cpu->x86_regs.cr[3]) {
 		extern int x86_virt_to_mach(struct dump *dump, uint64_t cr3,
 					    int paging_levels,
 					    vaddr_t virt, maddr_t *maddr);
 		maddr_t maddr;
 
-		if(x86_virt_to_mach(dump, cpu->x86_32.cr[3], paging_levels, virt, &maddr))
+		if(x86_virt_to_mach(dump, cpu->x86_regs.cr[3], paging_levels, virt, &maddr))
 			goto page_offset;
 
 		return maddr;
@@ -454,11 +481,8 @@ static maddr_t x86_32_virt_to_mach(struct dump *dump, struct cpu_state *cpu, vad
 struct arch arch_x86_32 = {
 	.sizeof_pointer = 4,
 	.sizeof_pfn = 4,
-
 	.sizeof_percpu = 1<<12,
-
 	.heap_limits = x86_32_heap_limits,
-
 	.parse_prstatus = x86_32_parse_prstatus,
 	.parse_crash_regs = x86_32_parse_crash_regs,
 	.parse_vcpu = x86_32_parse_vcpu,
@@ -466,6 +490,5 @@ struct arch arch_x86_32 = {
 	.print_cpu_state = x86_32_print_cpu_state,
 	.stack = x86_32_stack,
 	.instruction_pointer = x86_32_instruction_pointer,
-
-	.virt_to_mach = x86_32_virt_to_mach,
+	.virt_to_mach = x86_32_virt_to_mach
 };
