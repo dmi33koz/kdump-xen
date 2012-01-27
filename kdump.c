@@ -167,15 +167,15 @@ struct dump *open_dump(const char *fn, struct symbol_table *xen_symtab,
 	return NULL;
 }
 
-int create_elf_header_xen(struct dump *dump, FILE *f, uint64_t start, uint64_t end, uint64_t v_start, uint64_t p_offset) {
-	extern int create_elf_header_xen_32(FILE *f, uint64_t start, uint64_t end, uint64_t v_start, uint64_t p_offset);
-	extern int create_elf_header_xen_64(FILE *f, uint64_t start, uint64_t end, uint64_t v_start, uint64_t p_offset);
+int create_elf_header_xen(FILE *f, struct dump *dump, mem_range_t * mr_first) {
+	extern int create_elf_header_xen_32(FILE *f, struct dump *dump, mem_range_t * mr_first);
+	extern int create_elf_header_xen_64(FILE *f, struct dump *dump, mem_range_t * mr_first);
 	// dump->e_machine defines xen platform - 32/64
 	switch (dump->e_machine) {
 	case EM_386:
-		return create_elf_header_xen_32(f, start, end, v_start, p_offset);
+		return create_elf_header_xen_32(f, dump, mr_first);
 	case EM_X86_64:
-		return create_elf_header_xen_64(f, start, end, v_start, p_offset);
+		return create_elf_header_xen_64(f, dump, mr_first);
 	default:
 		fprintf(debug, "create_elf_header_xen: unknown machine class %d\n", dump->e_machine);
 		return 1;
@@ -215,4 +215,25 @@ void hex_dump(int offset, void *ptr, int size) {
 		i++;
 	}
 	fprintf(debug, "\n");
+}
+
+mem_range_t * alloc_mem_range(void) {
+	mem_range_t * mr;
+	mr = malloc(sizeof(mem_range_t));
+	if (!mr) {
+		fprintf(debug, "Error unable to allocate mem_range_t\n");
+		exit(-1);
+	}
+	memset(mr, '\0', sizeof(mem_range_t));
+	return mr;
+}
+
+void free_mem_range(mem_range_t *mr_first) {
+	mem_range_t *mr, *next;
+	mr = mr_first;
+	while (mr) {
+		next = mr->next;
+		free(mr);
+		mr = next;
+	}
 }

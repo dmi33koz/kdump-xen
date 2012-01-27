@@ -1,0 +1,90 @@
+From c99970c4310ae5e7f46a632ca6b652c391e42c49 Mon Sep 17 00:00:00 2001
+From: Dmitry Trikoz <dtrikoz@babson2.sn.stratus.com>
+Date: Tue, 24 Jan 2012 16:05:16 -0500
+Subject: [PATCH] Fix for xen 4.1.1 hypervisor core processing
+
+-- per-cpu area is allocated only for existing cpus,
+-- __per_cpu_offset[] holds offstes for all cpus.
+-- INVALID_PERCPU_AREA == (-(long)__per_cpu_start) -- In __per_cpu_offset[] indicates
+   unallocated per-cpu data
+---
+ xen_hyper.c      |   20 ++++++++++++++------
+ xen_hyper_defs.h |    5 ++++-
+ 2 files changed, 18 insertions(+), 7 deletions(-)
+
+diff --git a/xen_hyper.c b/xen_hyper.c
+index 6e9100e..0a8e3b3 100644
+--- a/xen_hyper.c
++++ b/xen_hyper.c
+@@ -63,8 +63,9 @@ xen_hyper_init(void)
+ 	}
+ 	machdep->get_smp_cpus();
+ 	machdep->memory_size();
+-
+-#ifdef IA64
++// fix for boston
++//#ifdef IA64
++	xht->__per_cpu_offset = NULL;
+ 	if (symbol_exists("__per_cpu_offset")) {
+ 		xht->flags |= XEN_HYPER_SMP;
+ 		if((xht->__per_cpu_offset = malloc(sizeof(ulong) * XEN_HYPER_MAX_CPUS())) == NULL) {
+@@ -76,7 +77,8 @@ xen_hyper_init(void)
+ 			error(FATAL, "cannot read __per_cpu_offset.\n");
+ 		}
+ 	}
+-#endif
++//fix for boston
++//#endif
+ 
+ #if defined(X86) || defined(X86_64)
+ 	if (symbol_exists("__per_cpu_shift")) {
+@@ -541,7 +543,8 @@ xen_hyper_schedule_init(void)
+ 		}
+ 		schc->cpu_id = cpuid;
+ 		schc->curr = ULONG(buf + XEN_HYPER_OFFSET(schedule_data_curr));
+-		schc->idle = ULONG(buf + XEN_HYPER_OFFSET(schedule_data_idle));
++		//boston
++		//schc->idle = ULONG(buf + XEN_HYPER_OFFSET(schedule_data_idle));
+ 		schc->sched_priv =
+ 			ULONG(buf + XEN_HYPER_OFFSET(schedule_data_sched_priv));
+ 		if (XEN_HYPER_VALID_MEMBER(schedule_data_tick))
+@@ -647,12 +650,17 @@ xen_hyper_dumpinfo_init(void)
+ 	for (i = 0; i < XEN_HYPER_MAX_CPUS(); i++) {
+ 		ulong addr_notes;
+ 
++		xhdit->context_array[i].note = 0;
+ 		addr_notes = xen_hyper_per_cpu(addr, i);
++		//check for INVALID_PERCPU_AREA == -(__per_cpu_start) -- unused CUP slots in xen 4.1.1
++		if (addr_notes + st->__per_cpu_start == addr) {
++			continue;
++		}
+ 		if (xhdit->note_ver == XEN_HYPER_ELF_NOTE_V4) {
+ 			if (!readmem(addr_notes, KVADDR, &(xhdit->context_array[i].note),
+ 			sizeof(ulong), "per_cpu__crash_notes", RETURN_ON_ERROR)) {
+-				error(WARNING, "cannot read per_cpu__crash_notes.\n");
+-				return;
++				//error(WARNING, "cannot read per_cpu__crash_notes cpu %d.\n", i);
++				continue;
+ 			}
+ 		} else {
+ 			xhdit->context_array[i].note = addr_notes;
+diff --git a/xen_hyper_defs.h b/xen_hyper_defs.h
+index dac38af..a3b3495 100644
+--- a/xen_hyper_defs.h
++++ b/xen_hyper_defs.h
+@@ -135,8 +135,11 @@ typedef uint32_t	Elf_Word;
+ #endif
+ 
+ #if defined(X86) || defined(X86_64)
++// fix for boston
+ #define xen_hyper_per_cpu(var, cpu)  \
+-	((ulong)(var) + (((ulong)(cpu))<<xht->percpu_shift))
++ ( (xht->__per_cpu_offset) ? \
++   (ulong)(var) + (xht->__per_cpu_offset[cpu]) : \
++	(ulong)(var) + (((ulong)(cpu))<<xht->percpu_shift) )
+ #elif defined(IA64)
+ #define xen_hyper_per_cpu(var, cpu)  \
+ 	((xht->flags & XEN_HYPER_SMP) ? \
+-- 
+1.5.4.rc1
+

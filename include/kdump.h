@@ -69,10 +69,8 @@ struct cpu_state {
 		uint16_t ds;
 		uint16_t fs;
 		uint16_t gs;
-
 		uint64_t cr[8];
 	} x86_regs;
-
 };
 
 struct memory_extent {
@@ -81,6 +79,13 @@ struct memory_extent {
 	uint64_t length;
 	off64_t offset;  /* offset within core file */
 };
+
+typedef struct mem_range {
+	maddr_t mfn;
+	uint64_t page_count;
+	maddr_t vaddr;
+	struct mem_range * next;
+} mem_range_t;
 
 struct arch {
 	/* Number of bytes in various type. */
@@ -123,7 +128,7 @@ struct arch {
 	maddr_t (*virt_to_mach)(struct dump *dump, struct cpu_state *cpu, vaddr_t virt);
 	/* Creates elf header for xen meory dump
 	 */
-	int (*create_elf_header_xen)(FILE *f, uint64_t start, uint64_t end, uint64_t v_start, uint64_t p_offset);
+	int (*create_elf_header_xen)(FILE *f, struct dump *dump, mem_range_t * mr_first);
 
 };
 
@@ -159,6 +164,10 @@ struct dump {
 	uint64_t tainted;
 	uint64_t xen_major_version;
 	uint64_t xen_minor_version;
+	uint64_t frame_table;
+	int sizeof_page_info;
+	int offset_page_info_count_info;
+	int offset_page_info_domain;
 	char *xen_extra_version;
 	char *xen_changeset;
 	char *xen_compiler;
@@ -304,8 +313,11 @@ void free_domain(struct domain *domain);
 
 void hex_dump(int offset, void *ptr, int size);
 
-extern int create_elf_header_xen(struct dump *dump, FILE *f, uint64_t start, uint64_t end, uint64_t v_start, uint64_t p_offset);
+extern int create_elf_header_xen(FILE *f, struct dump *dump, mem_range_t * mr_first);
 
 extern int create_elf_header_dom(FILE *f, struct dump *dump, int dom_id);
+
+extern mem_range_t * alloc_mem_range(void);
+extern void free_mem_range(mem_range_t *mr_first);
 
 #endif

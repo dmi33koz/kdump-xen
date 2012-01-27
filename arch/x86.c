@@ -12,8 +12,7 @@ int x86_virt_to_mach(struct dump *dump, maddr_t cr3, int paging_levels, vaddr_t 
 	maddr_t pt;
 	maddr_t page;
 
-	fprintf(debug, "translating %"PRIxVADDR" with CR3 %"PRIx64" and %d levels of page table\n",
-		vaddr, cr3, paging_levels);
+	//fprintf(debug, "translating %"PRIxVADDR" with CR3 %"PRIx64" and %d levels of page table\n", vaddr, cr3, paging_levels);
 
 	if (paging_levels == 2)
 	{

@@ -7,10 +7,11 @@
 #include <stdlib.h>
 #include <string.h>
 #include <unistd.h>
-
+#include <ctype.h>
 #include <xen/elfnote.h>
 
 #include "kdump.h"
+#include "bitness.h"
 
 #if ELFSIZE == 32
 
@@ -299,6 +300,96 @@ static int parse_note_Xen(struct dump *dump, off64_t offset, Elf_Nhdr *note)
 	return 0;
 }
 
+static int note_get_symbol_hex(char *text, char * name, uint64_t * val) {
+	uint64_t v;
+	char * ptr_begin;
+
+	ptr_begin = strstr(text, name);
+	if (!ptr_begin) {
+		fprintf(debug, "note string %s not found\n", name);
+		return 1;
+	}
+	ptr_begin += strlen(name);
+
+	if (sscanf(ptr_begin, "%" PRIx64, &v) != 1) {
+		fprintf(debug, "note string %s sscanf failed\n", name);
+		return 1;
+	}
+	*val = v;
+	return 0;
+}
+
+static int note_get_symbol(char *text, char * name, uint64_t * val) {
+	uint64_t v;
+	char * ptr_begin;
+
+	ptr_begin = strstr(text, name);
+	if (!ptr_begin) {
+		fprintf(debug, "note string %s not found\n", name);
+		return 1;
+	}
+	ptr_begin += strlen(name);
+
+	if (sscanf(ptr_begin, "%" PRIu64, &v) != 1) {
+		fprintf(debug, "note string %s sscanf failed\n", name);
+		return 1;
+	}
+	*val = v;
+	return 0;
+}
+
+static int parse_note_VMCOREINFO(struct dump *dump, off64_t offset, Elf_Nhdr *note)
+{
+	char * text;
+
+	text = malloc(note->n_descsz +1);
+	memcpy(text, ELFNOTE_DESC(note), note->n_descsz);
+	text[note->n_descsz] = '\0';
+
+	fprintf(debug, "parse_note_VMCOREINFO note type %x size %d len %d\n",
+			note->n_type, note->n_descsz, strlen(text));
+	fprintf(debug, ">>%s<<\n", text);
+	free(text);
+	return 0;
+}
+
+static int parse_note_VMCOREINFO_XEN(struct dump *dump, off64_t offset, Elf_Nhdr *note)
+{
+	char * text;
+   uint64_t val;
+
+	text = malloc(note->n_descsz +1);
+	memcpy(text, ELFNOTE_DESC(note), note->n_descsz);
+	text[note->n_descsz] = '\0';
+
+	fprintf(debug, "parse_note_VMCOREINFO_XEN note type %x size %d len %d\n",
+			note->n_type, note->n_descsz, strlen(text));
+	fprintf(debug, ">>%s<<\n", text);
+
+	if (note_get_symbol_hex(text, "SYMBOL(frame_table)=", &val) == 0) {
+		dump->frame_table = val;
+	}
+	fprintf(debug, "frame_table = %#" PRIx64 "\n", dump->frame_table);
+
+	if (note_get_symbol(text, "SIZE(page_info)=", &val) == 0) {
+		dump->sizeof_page_info = val;
+	}
+	fprintf(debug, "sizeof_page_info = %d\n", dump->sizeof_page_info);
+
+	if (note_get_symbol(text, "OFFSET(page_info.count_info)=", &val) == 0) {
+		dump->offset_page_info_count_info = val;
+	}
+	fprintf(debug, "offset_page_info_count_info = %d\n", dump->offset_page_info_count_info);
+
+	if (note_get_symbol(text, "OFFSET(page_info._domain)=", &val) == 0) {
+		dump->offset_page_info_domain = val;
+	}
+	fprintf(debug, "offset_page_info_domain = %d\n", dump->offset_page_info_domain);
+
+	free(text);
+	return 0;
+}
+
 
 static struct note_handler {
 	const char *name;
@@ -307,6 +398,8 @@ static struct note_handler {
 	{ .name = "CORE", .handler = parse_note_CORE },
 	{ .name = "XEN CORE", .handler = parse_note_XEN_CORE },
 	{ .name = "Xen", .handler = parse_note_Xen },
+	{ .name = "VMCOREINFO", .handler = parse_note_VMCOREINFO },
+	{ .name = "VMCOREINFO_XEN", .handler = parse_note_VMCOREINFO_XEN },
 };
 #define NR_NOTE_HANDLERS (sizeof(note_handlers)/sizeof(note_handlers[0]))
 
@@ -401,15 +494,22 @@ static int foreach_phdr_type(struct dump *dump,
 	return 0;
 }
 
-int FN(create_elf_header_xen)(FILE *f, uint64_t start, uint64_t end, uint64_t v_start, uint64_t p_offset) {
+int FN(create_elf_header_xen)(FILE *f, struct dump *dump, mem_range_t * mr_first) {
 	phdr_info_t *p_info;
-	fprintf(debug, "start %llx end %llx v_start %llx p_offset %llx\n", start, end, v_start, p_offset);
+	mem_range_t * mr = mr_first;
 
-	p_info = __add_phdr_info(&elfall, PT_LOAD, PF_R | PF_W | PF_X);
-	p_info->phdr.p_vaddr = v_start;
-	p_info->phdr.p_paddr = start;
-	p_info->phdr.p_filesz = end - start;
-	p_info->phdr.p_memsz = end - start;
+	while (mr) {
+		fprintf(debug, "ELF PT_LOAD start mfn 0x%llx end mfn 0x%llx pages 0x%llx vaddr 0x%llx\n", mr->mfn, mr->mfn + mr->page_count,
+				mr->page_count, mr->vaddr);
+
+		p_info = __add_phdr_info(&elfall, PT_LOAD, PF_R | PF_W | PF_X);
+		p_info->phdr.p_vaddr = mr->vaddr;
+		p_info->phdr.p_paddr = mr->mfn << PAGE_SHIFT;
+		p_info->phdr.p_filesz = mr->page_count << PAGE_SHIFT;
+		p_info->phdr.p_memsz = mr->page_count << PAGE_SHIFT;
+		mr = mr->next;
+	}
+
 	__fix_section_offsets(&elfall);
 	__write_all_elfs(f, &elfall);
 	return ftell(f);

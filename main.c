@@ -2,6 +2,7 @@
 
 #define _FILE_OFFSET_BITS 64
 
+#include <elf.h>
 #include <errno.h>
 #include <fcntl.h>
 #include <inttypes.h>
@@ -17,6 +18,7 @@
 #include "kdump.h"
 #include "memory.h"
 #include "symbols.h"
+#include "bitness.h"
 
 FILE *debug, *output;
 
@@ -454,17 +456,65 @@ static void dump_domains(struct dump *dump, int which)
 	}
 }
 
-static void dump_xen_memory(struct dump *dump, const char *file)
+static void dump_xen_memory_new(struct dump *dump, const char *file) {
+	FILE *mem;
+	maddr_t addr;
+	size_t ret;
+	mem_range_t *mr, *mr_first;
+	int elf_header_size = 0;
+	unsigned char buf[PAGE_SIZE];
+
+	fprintf(debug, "dump_xen_memory_old()\n");
+
+	mem = fopen_in_output_directory(file, "w");
+	if (mem == NULL) {
+		fprintf(output, "  Failed to open output %s\n", file);
+		return;
+	}
+
+	if (dump->e_machine == EM_X86_64) {
+		mr_first = get_page_ranges_xen_64(dump);
+	} else {
+		mr_first = get_page_ranges_xen_32(dump);
+	}
+	if (!mr_first) {
+		fprintf(output, "  Failed to collect XEN memory ranges\n");
+		return;
+	}
+
+	elf_header_size = create_elf_header_xen(mem, dump, mr_first);
+
+	for (mr = mr_first; mr != NULL; mr = mr->next) {
+		for (addr = mr->mfn << PAGE_SHIFT; addr < (mr->mfn + mr->page_count) << PAGE_SHIFT; addr += PAGE_SIZE) {
+			ret = kdump_read_maddr(dump, addr, buf, PAGE_SIZE);
+			if (ret == 0) {
+				fprintf(debug, "error reading offset %"PRIxMADDR" in xen memory dump: %s\n", addr, strerror(errno));
+				goto out;
+			}
+
+			/* Don't worry about short writes too much but exit on error. */
+			if (fwrite(buf, 1, ret, mem) < 0) {
+				fprintf(debug, "error writing to offset %"PRIxMADDR" in xen memory dump: %s\n", addr, strerror(errno));
+				goto out;
+			}
+		}
+	}
+	out: free_mem_range(mr_first);
+	fclose(mem);
+}
+
+static void dump_xen_memory_old(struct dump *dump, const char *file)
 {
 	maddr_t addr;
 	unsigned char buf[PAGE_SIZE];
 	size_t ret;
+	mem_range_t * mr;
 
 	maddr_t start, end, offset;
 	FILE *mem;
 	int elf_header_size = 0;
-
-	extern int create_elf_header_xen_64(FILE *f, uint64_t start, uint64_t end, uint64_t v_start,uint64_t p_offset);
+	
+	fprintf(debug, "dump_xen_memory_old()\n");
 
 	fprintf(output, "Xen Physical Memory:\n");
 
@@ -493,8 +543,12 @@ static void dump_xen_memory(struct dump *dump, const char *file)
 	fprintf(output, "  XEN_virt_start: %016"PRIxMADDR" XEN_page_offset: %016"PRIxMADDR"\n", XEN_virt_start, XEN_page_offset);
 	fprintf(output, "  Writing to: %s\n", file);
 	fprintf(output, "\n");
+	mr = alloc_mem_range();
+	mr->mfn = start;
+	mr->page_count = (end - start) >> PAGE_SHIFT;
+	mr->vaddr = XEN_virt_start;
 
-	elf_header_size = create_elf_header_xen(dump, mem, start, end,  XEN_virt_start, XEN_page_offset);
+	elf_header_size = create_elf_header_xen(mem, dump, mr);
 	offset = elf_header_size;
 
 	for (addr = start; addr < end; addr += PAGE_SIZE) {
@@ -511,6 +565,24 @@ static void dump_xen_memory(struct dump *dump, const char *file)
 
  out:
 	fclose(mem);
+}
+
+static void dump_xen_memory(struct dump *dump, const char *file)
+{
+	maddr_t start, end;
+	fprintf(debug, "dump_xen_memory()\n");
+	if (kdump_heap_limits(dump, &start, &end) == 0) {
+		dump_xen_memory_old(dump, file);
+		return;
+	}
+
+	if (dump->frame_table != 0) {
+		dump_xen_memory_new(dump, file);
+		return;
+	}
+
+	fprintf(output, "\tUnavailable, failed to determine heap limits.\n\n");
+	return;
 }
 
 static void dump_domain_memory(struct dump *dump, struct domain *d, const char *file) {
