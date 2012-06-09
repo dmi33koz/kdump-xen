@@ -27,8 +27,15 @@ static int allocate_vcpus(struct domain *d, int nr)
 
 	d->vcpus = tmp;
 
+	tmp = realloc(d->guest_cpus, nr*sizeof(struct cpu_state));
+	if (tmp == NULL)
+		return 1;
+
+	d->guest_cpus = tmp;
+
 	/* Zero the new cpu(s) */
 	memset(&d->vcpus[d->nr_vcpus], 0, (nr-d->nr_vcpus)*sizeof(struct cpu_state));
+	memset(&d->guest_cpus[d->nr_vcpus], 0, (nr-d->nr_vcpus)*sizeof(struct cpu_state));
 
 	d->nr_vcpus = nr;
 
@@ -78,6 +85,7 @@ static int parse_domain(struct dump *dump, vaddr_t domain, int nr_symtabs, const
 	int i;
 	unsigned int max_vcpus;
 	vaddr_t vcpu_array;
+	struct symbol *high_memory_s;
 
 	ASSERT_REQUIRED_SYMBOLS(1);
 
@@ -127,8 +135,12 @@ static int parse_domain(struct dump *dump, vaddr_t domain, int nr_symtabs, const
 				d->domid, vcpu->nr);
 			return 1;
 		}
+		if (d->has_32bit_shinfo) {
+			vcpu->bitnes = 32;
+		} else {
+			vcpu->bitnes = 64;
+		}
 	}
-
 	if (d->has_32bit_shinfo) {
 		d->shared_info.max_pfn = kdump_read_pfn_vaddr(dump, d, d->v_shared_info + SHARED_compat_max_pfn);
 		d->shared_info.pfn_to_mfn_list_list =
@@ -150,6 +162,23 @@ static int parse_domain(struct dump *dump, vaddr_t domain, int nr_symtabs, const
 				d->domid, symtabs[d->domid]);
 		else
 			fprintf(output, "Domain %d symbol table: %s\n", d->domid, symtabs[d->domid]);
+	}
+	high_memory_s = symtab_lookup_name(d->symtab, "high_memory");
+	if (!high_memory_s) {
+		fprintf(debug, "Error Symbol not found high_memory\n");
+	} else {
+		if (d->has_32bit_shinfo) {
+			d->high_memory = kdump_read_uint32_vaddr(dump, d, high_memory_s->address);
+		} else {
+			d->high_memory = kdump_read_uint64_vaddr(dump, d, high_memory_s->address);
+		}
+		fprintf(debug, "Symbol high_memory fount 0x%llx\n", d->high_memory);
+	}
+
+	if (kdump_parse_guest_cpus(dump, d))
+	{
+		fprintf(debug, "failed to parse DOM%d guest cpus\n",
+			d->domid);
 	}
 
 	return 0;
@@ -190,6 +219,10 @@ int parse_domain_list(struct dump *dump, int nr_symtabs, const char **symtabs)
 				if (p->physical.v_current == v->virtual.v_struct_vcpu)
 					p->physical.current = v;
 			}
+		}
+		for_each_guest_cpu(d, v)
+		{
+			v->virtual.domain = d;
 		}
 	}
 

@@ -1,15 +1,15 @@
 /* Copyright (c) 2007, XenSource, Inc. - All rights reserved. */
 
+#include <sys/types.h>
 #include <elf.h>
 #include <errno.h>
-#include <fcntl.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
 #include <unistd.h>
 
 #include <sys/stat.h>
-#include <sys/types.h>
+#include <fcntl.h>
 
 #include "kdump.h"
 #include "memory.h"

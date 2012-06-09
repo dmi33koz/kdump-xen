@@ -28,7 +28,8 @@ struct cpu_state {
       uint32_t _e ## name; \
 }
 	int nr;
-
+	int valid;
+	int bitnes;
 	union {
 		struct {
 			struct cpu_state *current, /**idle_vcpu,*/ *curr_vcpu;
@@ -76,6 +77,7 @@ struct cpu_state {
 struct memory_extent {
 	maddr_t maddr;
 	vaddr_t vaddr;
+	paddr_t paddr;
 	uint64_t length;
 	off64_t offset;  /* offset within core file */
 };
@@ -136,6 +138,7 @@ struct domain {
 	uint16_t domid;
 	vaddr_t v_domain_info;
 	vaddr_t v_shared_info;
+	vaddr_t high_memory;
 
 	struct symbol_table *symtab;
 
@@ -145,7 +148,8 @@ struct domain {
 	} shared_info;
 
 	int nr_vcpus;
-	struct cpu_state *vcpus;
+	struct cpu_state *vcpus; // xen virtual cpu state
+	struct cpu_state *guest_cpus; // guest cpu state extracted from crash_notes
 
 	int is_hvm;
 	int is_privileged;
@@ -221,6 +225,7 @@ static inline vaddr_t kdump_set_prstatus(struct domain *d, void *prs, struct cpu
 		return x86_64_set_prstatus(d, prs, cpu);
 	}
 }
+extern int x86_32_get_vmalloc_extents(struct dump *dump, struct domain *d, struct cpu_state *cpu, struct memory_extent ** extents);
 
 static inline vaddr_t kdump_parse_crash_regs(struct dump *dump, void *note, struct cpu_state *cpu)
 {
@@ -234,6 +239,19 @@ static inline vaddr_t kdump_parse_vcpu(struct dump *dump, struct cpu_state *cpu,
 {
 	return dump->_arch->parse_vcpu(dump, cpu, vcpu_info);
 }
+
+extern int x86_32_parse_guest_cpus(struct dump *dump, struct domain *d);
+extern int x86_64_parse_guest_cpus(struct dump *dump, struct domain *d);
+
+static inline vaddr_t kdump_parse_guest_cpus(struct dump *dump, struct domain *d)
+{
+	if(d->has_32bit_shinfo && dump->compat_arch) {
+		return x86_32_parse_guest_cpus(dump, d);
+	} else {
+		return x86_64_parse_guest_cpus(dump, d);
+	}
+}
+
 static inline vaddr_t kdump_stack(struct dump *dump, struct cpu_state *cpu)
 {
 	return dump->_arch->stack(dump, cpu);
@@ -244,7 +262,11 @@ static inline vaddr_t kdump_instruction_pointer(struct dump *dump, struct cpu_st
 }
 static inline vaddr_t kdump_print_cpu_state(FILE *o, struct dump *dump, struct cpu_state *cpu)
 {
-	return dump->_arch->print_cpu_state(o, dump, cpu);
+	if (cpu->bitnes == 32) {
+		return dump->compat_arch->print_cpu_state(o, dump, cpu);
+	} else {
+		return dump->_arch->print_cpu_state(o, dump, cpu);
+	}
 }
 static inline 	maddr_t kdump_virt_to_mach(struct dump *dump, struct cpu_state *cpu, vaddr_t virt)
 {
@@ -309,6 +331,11 @@ extern int parse_domain_list(struct dump *dump, int nr_symtabs, const char **sym
 	     (vcpu) < &(dom)->vcpus[(dom)->nr_vcpus]; \
 	     (vcpu)++)
 
+#define for_each_guest_cpu(dom, vcpu) \
+	for ((vcpu) = &(dom)->guest_cpus[0]; \
+	     (vcpu) < &(dom)->guest_cpus[(dom)->nr_vcpus]; \
+	     (vcpu)++)
+
 void free_domain(struct domain *domain);
 
 void hex_dump(int offset, void *ptr, int size);
@@ -319,5 +346,5 @@ extern int create_elf_header_dom(FILE *f, struct dump *dump, int dom_id);
 
 extern mem_range_t * alloc_mem_range(void);
 extern void free_mem_range(mem_range_t *mr_first);
-
+void xen_m2p(struct dump *dump, struct domain *d, struct memory_extent *extents, int count);
 #endif

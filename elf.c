@@ -12,6 +12,7 @@
 
 #include "kdump.h"
 #include "bitness.h"
+#include "memory.h"
 
 #if ELFSIZE == 32
 
@@ -33,10 +34,15 @@
  * Even on 32 bit platform we use Elf64_Ehdr and Elf64_Phdr
  * in order to describe large memory configuration like PAE.
  * kexec should always use --elf64-core-headers option
+ *
+ * It also helps that
+ * sizeof(Elf32_Word) == sizeof(Elf64_Word)
+ * sizeof(Elf32_Nhdr) == sizeof(Elf64_Nhdr)
+ *
+ * for more details see /usr/include/elf.h
  */
-
-typedef TYPE(Nhdr) Elf_Nhdr;
-typedef TYPE(Word) Elf_Word;
+typedef Elf32_Nhdr Elf_Nhdr;
+typedef Elf32_Word Elf_Word;
 
 #define DYNAMICALLY_FILLED   0
 #define RAW_OFFSET         256
@@ -134,13 +140,17 @@ static void __fix_section_offsets(elf_all_t *all) {
 	phdr_all_t *p_all = &all->phdrs;
 	phdr_info_t *pi;
 	int i;
-	// shift to the end of program headers
-	unsigned int offset = sizeof(Elf64_Ehdr) + p_all->count * sizeof(Elf64_Phdr);
+	unsigned int data_offset;
+	data_offset = sizeof(Elf64_Ehdr) + p_all->count * sizeof(Elf64_Phdr);
 
 	for (i = 0; i < p_all->count; i++) {
 		pi = &p_all->pinfos[i];
-		pi->phdr.p_offset = offset;
-		offset += pi->phdr.p_filesz;
+		pi->phdr.p_offset = pi->phdr.p_paddr + data_offset;
+		// only NOTE header has data and size now
+		// for DOM0 - LOAD data == NULL it will be written right after ELF headers
+		if (pi->data) {
+			data_offset += pi->size;
+		}
 	}
 }
 
@@ -237,7 +247,6 @@ static int parse_note_CORE(struct dump *dump, off64_t offset, Elf_Nhdr *note)
 	switch (note->n_type) {
 	case NT_PRSTATUS: {
 		memset(&current_cpu, 0, sizeof(current_cpu));
-
 		if (kdump_parse_prstatus(dump, ELFNOTE_DESC(note), &current_cpu))
 			return 1;
 
@@ -257,6 +266,44 @@ static int parse_note_CORE(struct dump *dump, off64_t offset, Elf_Nhdr *note)
 static int parse_note_XEN_CORE(struct dump *dump, off64_t offset, Elf_Nhdr *note)
 {
 	fprintf(debug, "unhandled \"XEN CORE\" note type %x\n", note->n_type);
+	return 1;
+}
+
+// read crash_note from vaddr and set current_cpu to the state
+int FN(parse_crash_note)(struct dump *dump, struct domain *d, vaddr_t note_p, struct cpu_state *guest_cpu) {
+	Elf_Nhdr *note = NULL;
+	int size = 0;
+	note = malloc(sizeof(*note));
+
+	// first find out total note size
+	if (kdump_read_vaddr(dump, d, note_p, (void*) note, sizeof(*note)) != sizeof(*note))
+		goto err;
+
+	if (note->n_type != NT_PRSTATUS || !ELFNOTE_NAMESZ(note) || !ELFNOTE_DESCSZ(note))
+		goto err;
+
+	size = ELFNOTE_SIZE(note);
+	note = realloc(note, size);
+
+	// then read whole note
+	if (kdump_read_vaddr(dump, d, note_p, note, size) != size)
+		goto err;
+
+	//hex_dump(0, note, size);
+	if (strncmp("CORE", ELFNOTE_NAME(note), ELFNOTE_NAMESZ(note)) != 0)
+		goto err;
+
+	if (parse_note_CORE(dump, 0, note))
+		goto err;
+
+	memcpy(guest_cpu, &current_cpu, sizeof(current_cpu));
+	memset(&current_cpu, 0, sizeof(current_cpu));
+
+	free(note);
+	return 0;
+err:
+	if(note)
+		free(note);
 	return 1;
 }
 
@@ -525,6 +572,9 @@ int FN(create_elf_header_dom)(FILE *f, struct dump *dump, int dom_id) {
 	struct domain *d;
 	struct phdr_info *p_info;
 	int prstatus_size;
+	struct memory_extent *vmalloc_extents;
+	int vmalloc_count, n;
+
 	fprintf(debug, "%s: domid %d\n", __FUNCTION__, dom_id);
 
 	d = &dump->domains[dom_id];
@@ -543,14 +593,37 @@ int FN(create_elf_header_dom)(FILE *f, struct dump *dump, int dom_id) {
 		fprintf(debug, "adding note ELF_Prstatus size = 0x%x\n", prstatus_size);
 		__add_note(p_info, "CORE", NT_PRSTATUS, (char*) &prs, prstatus_size);
 	}
-	// add memory program header
+	/* setup ELF PT_LOAD program header for the
+	 * virtual range 0xc0000000 -> high_memory
+	 */
 	p_info = __add_phdr_info(&all, PT_LOAD, PF_R | PF_W | PF_X);
-	// setup header
-	p_info->phdr.p_vaddr = 0xc0000000;
+	p_info->phdr.p_vaddr = d->symtab->lowest_kernel_address; //0xc0000000
 	p_info->phdr.p_paddr = 0;
-	p_info->phdr.p_filesz = d->shared_info.max_pfn << PAGE_SHIFT;
+	//p_info->phdr.p_filesz = d->shared_info.max_pfn << PAGE_SHIFT;
+	p_info->phdr.p_filesz = d->high_memory - d->symtab->lowest_kernel_address;
 	p_info->phdr.p_memsz = p_info->phdr.p_filesz;
+	p_info->phdr.p_align = PAGE_SIZE;
 
+	/* ELF PT_LOAD program header for the
+	 * virtual range high_memory -> max pfn
+	 */
+	p_info = __add_phdr_info(&all, PT_LOAD, PF_R | PF_W | PF_X);
+	p_info->phdr.p_vaddr = 0;
+	p_info->phdr.p_paddr = d->high_memory - d->symtab->lowest_kernel_address;
+	;
+	p_info->phdr.p_filesz = (d->shared_info.max_pfn << PAGE_SHIFT) - (d->high_memory - d->symtab->lowest_kernel_address);
+	p_info->phdr.p_memsz = p_info->phdr.p_filesz;
+	p_info->phdr.p_align = PAGE_SIZE;
+
+	vmalloc_count = x86_32_get_vmalloc_extents(dump, d, vcpu, &vmalloc_extents);
+	for (n = 0; n < vmalloc_count; n++) {
+		p_info = __add_phdr_info(&all, PT_LOAD, PF_R | PF_W | PF_X);
+		p_info->phdr.p_vaddr = (vmalloc_extents + n)->vaddr;
+		p_info->phdr.p_paddr = (vmalloc_extents + n)->paddr;
+		p_info->phdr.p_filesz = (vmalloc_extents + n)->length;
+		p_info->phdr.p_memsz = p_info->phdr.p_filesz;
+		p_info->phdr.p_align = PAGE_SIZE;
+	}
 	__fix_section_offsets(&all);
 	__write_all_elfs(f, &all);
 	return ftell(f);

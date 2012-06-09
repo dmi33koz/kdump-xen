@@ -25,25 +25,86 @@ static struct memory_extent *locate_maddr(struct dump *dump, maddr_t maddr)
 	return NULL;
 }
 
+#define DUMP_CACHE_SIZE 8
+struct dump_cache_entry {
+	char *buf;
+	int n_hits;
+	maddr_t mfn;
+} dump_cache[DUMP_CACHE_SIZE];
+
+static int cache_initialized = 0;
+
+static void init_cache() {
+	int i;
+	for (i =0; i < DUMP_CACHE_SIZE; i++) {
+		dump_cache[i].buf = (char*)malloc(PAGE_SIZE);
+		dump_cache[i].n_hits = 0;
+		dump_cache[i].mfn = -1;
+	}
+}
+
+int cache_hits = 0;
+
 /* Read an arbitrary number of bytes from a machine address. */
 /* FIXME: does not handle reads which cross extents. */
 size_t kdump_read_maddr(struct dump *dump, maddr_t maddr, void *buf, size_t size)
 {
 	struct memory_extent *mext;
 	off64_t offset;
+	int least_used = 0;
+	maddr_t mfn;
+	int i;
+
+	if (!cache_initialized) {
+		init_cache();
+		cache_initialized = 1;
+	}
 
 	mext = locate_maddr(dump, maddr);
 	if (mext == NULL)
 		return 0;
 
-	offset = maddr - mext->maddr + mext->offset;
+	if (((maddr & (PAGE_SIZE - 1)) + size)  > PAGE_SIZE) {
+
+		offset = maddr - mext->maddr + mext->offset;
+
+		if (lseek64(dump->fd, offset, SEEK_SET) != offset) {
+			fprintf(debug, "failed to seek to %"PRIx64"\n", offset);
+			return 0;
+		}
+		return read(dump->fd, buf, size);
+	}
+	// search mfn in cache
+	mfn = maddr >> PAGE_SHIFT;
+	for (i =0; i < DUMP_CACHE_SIZE; i++) {
+		if (mfn == dump_cache[i].mfn) {
+			cache_hits++;
+			dump_cache[i].n_hits++;
+			memcpy(buf, dump_cache[i].buf + (maddr & (PAGE_SIZE - 1)), size);
+			return size;
+		}
+		if (dump_cache[least_used].n_hits > dump_cache[i].n_hits) {
+			least_used = i;
+		}
+	}
+
+	offset = (mfn << PAGE_SHIFT) - mext->maddr + mext->offset;
 
 	if (lseek64(dump->fd, offset, SEEK_SET) != offset) {
 		fprintf(debug, "failed to seek to %"PRIx64"\n", offset);
 		return 0;
 	}
-	return read(dump->fd, buf, size);
+	if (read(dump->fd, dump_cache[least_used].buf, PAGE_SIZE) != PAGE_SIZE) {
+		dump_cache[least_used].mfn = -1;
+		dump_cache[least_used].n_hits = 0;
+		return 0;
+	}
+	dump_cache[least_used].mfn = mfn;
+	dump_cache[least_used].n_hits = 1;
+	memcpy(buf, dump_cache[least_used].buf + (maddr & (PAGE_SIZE - 1)), size);
+	return size;
 }
+
 extern size_t kdump_read_vaddr_cpu(struct dump *dump, struct cpu_state *cpu,
 				   vaddr_t vaddr, void *buf, size_t size)
 {

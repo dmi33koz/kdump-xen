@@ -197,6 +197,10 @@ static int x86_64_parse_crash_regs(struct dump *dump, void *_cr, struct cpu_stat
 	return 0;
 }
 
+int x86_64_parse_guest_cpus(struct dump *dump, struct domain *d) {
+	return -1;
+}
+
 static int x86_64_parse_vcpu(struct dump *dump, struct cpu_state *cpu, vaddr_t vcpu_info)
 {
 	unsigned char vcpu[VCPU_sizeof];

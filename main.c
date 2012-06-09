@@ -432,6 +432,14 @@ static void __dump_domain(struct dump *dump, struct domain *d)
 		dump_cpu_stack(o, dump, vcpu);
 	}
 
+	for_each_guest_cpu(d, vcpu) {
+		if (vcpu->valid) {
+			fprintf(o, "  Guest CPU%d", vcpu->nr);
+			kdump_print_cpu_state(o, dump, vcpu);
+			dump_cpu_stack(o, dump, vcpu);
+		}
+	}
+
 	if (options.console_ring)
 		dump_domain_console_ring(o, dump, d);
 
@@ -730,6 +738,83 @@ static void dump_domain_memory(struct dump *dump, struct domain *d, const char *
 	fprintf(output, "Dom0 dumped OK. File size %"PRIxMADDR"\n", ftello(mem));
  out:
 	fclose(mem);
+}
+
+void xen_m2p(struct dump *dump, struct domain *d, struct memory_extent *extents, int count) {
+	maddr_t p2mll, p2ml, p2m;
+	pfn_t max_pfn, pfn, mfn;
+	maddr_t ma;
+	int i;
+
+	const int fpp = (PAGE_SIZE / kdump_sizeof_pfn(dump, d));
+
+	if (d->is_hvm) {
+		//fprintf(output, "  Cannot dump Pseudo-Physical address space of HVM domain\n");
+		return;
+	}
+
+	p2mll = d->shared_info.pfn_to_mfn_list_list;
+	if (p2mll == 0) {
+		//fprintf(output, "  No frame list list available for this domain\n");
+		return;
+	}
+
+	max_pfn = d->shared_info.max_pfn;
+	if (max_pfn == 0) {
+		//fprintf(output, "  No max_pfn available for this domain\n");
+		return;
+	}
+
+	//TODO looping through all pages should be optimized
+	for (pfn = 0; pfn < max_pfn; pfn++) {
+		if ((pfn % (fpp * fpp)) == 0) {
+			ma = p2mll + (pfn / (fpp * fpp) * 4);
+			p2ml = kdump_read_pfn_maddr(dump, d, ma) << PAGE_SHIFT;
+			if (p2ml == 0) {
+				//fprintf(output, "  No P2M frame list for frames %"PRIxPFN"-%"PRIxPFN"\n",
+				//	pfn, pfn+(fpp*fpp));
+				break;
+			}
+			//fprintf(output, "  ================================================================\n");
+			//fprintf(output, "  P2M frame list for frames %"PRIxPFN"-%"PRIxPFN" "
+			//	"from %08"PRIxMADDR" = %08"PRIxMADDR"\n",
+			//	pfn, pfn+(fpp*fpp), ma, p2ml);
+		}
+		if ((pfn % fpp) == 0) {
+			ma = p2ml + (pfn / fpp * 4);
+			p2m = kdump_read_pfn_maddr(dump, d, ma) << PAGE_SHIFT;
+			if (p2m == 0) {
+				//fprintf(output, "    No P2M for frames %"PRIxPFN"-%"PRIxPFN"\n",
+				//	pfn, pfn+fpp);
+				break;
+			}
+			//fprintf(output, "    --------------------------------------------------------------\n");
+			//fprintf(output, "    P2M for frames %"PRIxPFN"-%"PRIxPFN" "
+			//	"from %08"PRIxMADDR" = %08"PRIxMADDR"\n",
+			//	pfn, pfn+fpp, ma, p2m);
+		}
+		ma = p2m + (pfn % fpp) * 4;
+
+		mfn = kdump_read_pfn_maddr(dump, d, ma);
+
+		//fprintf(output, "      P2M for frame %"PRIxPFN" is %"PRIxPFN" from %08"PRIxMADDR"\n",
+		//	pfn, mfn, ma);
+
+		if (mfn == 0x00000000ffffffffULL) {
+			//fprintf(output, "        Skip PFN %"PRIxPFN", MFN=%"PRIxPFN"\n", pfn, mfn);
+			continue;
+		}
+
+		if (mfn & (1ULL << 31)) {
+			//fprintf(output, "      FOREIGN\n");
+			mfn &= ~(1 << 31);
+		}
+		for (i = 0; i < count; i++) {
+			if (((extents + i)->maddr >> PAGE_SHIFT) == mfn) {
+				(extents + i)->paddr = (pfn << PAGE_SHIFT) + ((extents + i)->maddr & (PAGE_SIZE - 1));
+			}
+		}
+	}
 }
 
 int main(int argc, char **argv)

@@ -3,7 +3,7 @@
 #include <elf.h>
 #include <stdio.h>
 #include <string.h>
-
+#include <stdlib.h>
 #include "kdump.h"
 #include "memory.h"
 #include "symbols.h"
@@ -158,6 +158,159 @@ int x86_32_set_prstatus(struct domain *d, void *_prs, struct cpu_state *cpu) {
 	//hex_dump(0, prs->pr_reg, 4 * 17);
 
 	return sizeof(ELF_Prstatus);
+}
+
+/* bits in flags of vmalloc's vm_struct below */
+#define VM_IOREMAP	0x00000001	/* ioremap() and friends */
+#define VM_ALLOC	0x00000002	/* vmalloc() */
+#define VM_MAP		0x00000004	/* vmap()ed pages */
+#define VM_USERMAP	0x00000008	/* suitable for remap_vmalloc_range */
+#define VM_VPAGES	0x00000010	/* buffer for pages was vmalloc'ed */
+
+struct vm_struct {
+	struct vm_struct *next;
+	void *addr;
+	unsigned long size;
+	unsigned long flags;
+	void **pages; // struct pages
+	unsigned int nr_pages;
+	unsigned long phys_addr;
+	void *caller;
+};
+
+int x86_32_get_vmalloc_extents(struct dump *dump, struct domain *d, struct cpu_state *cpu, struct memory_extent ** extents_out) {
+	struct symbol *vmlist_s;
+	struct vm_struct ve;
+	vaddr_t ve_addr, vaddr;
+	maddr_t maddr;
+	struct memory_extent *ext = NULL;
+	int n_ext = 0;
+	int n, i;
+
+	vmlist_s = symtab_lookup_name(d->symtab, "vmlist");
+	if (!vmlist_s) {
+		fprintf(debug, "Error Symbol not found vmlist\n");
+		goto err;
+	}
+	ve_addr = kdump_read_uint32_vaddr(dump, d, vmlist_s->address);
+
+	while (ve_addr) {
+		if (kdump_read_vaddr(dump, NULL, ve_addr, &ve, sizeof(ve)) != sizeof(ve)) {
+			fprintf(debug, "vmlist entry error unavailable.");
+			goto err;
+		}
+		if ((ve.flags & VM_ALLOC) && ve.nr_pages != 0) {
+			ext = realloc(ext, sizeof(struct memory_extent) * (n_ext + ve.nr_pages));
+			vaddr = (vaddr_t) (uint32_t) ve.addr;
+			fprintf(debug, "vmlist 0x%llx === next %p addr %p flags %ld nr_pages %d \n", ve_addr, ve.next, ve.addr, ve.flags, ve.nr_pages);
+			// for every page of vmalloc area find machine address and fill extents
+			for (n = 0; n < ve.nr_pages; n++) {
+				vaddr = (vaddr_t) (uint32_t) ve.addr + (n << PAGE_SHIFT);
+				maddr = kdump_virt_to_mach(dump, &dump->cpus[0], vaddr);
+				(ext + n_ext)->maddr = maddr;
+				(ext + n_ext)->vaddr = vaddr;
+				(ext + n_ext)->paddr = -1;
+				(ext + n_ext)->length = PAGE_SIZE;
+				(ext + n_ext)->offset = 0;
+				n_ext++;
+			}
+		}
+		ve_addr = (vaddr_t) (uint32_t) ve.next;
+	}
+	// this takes extents array and and fills
+	// pseudo physical address for every machine address - paddr
+	xen_m2p(dump, d, ext, n_ext);
+
+	// find contiguous vaddr - paddr segments ang glue them together
+	for (n = 1, i = 0; n < n_ext; n++) {
+		if (((ext + i)->vaddr + (ext + i)->length == (ext + n)->vaddr) && ((ext + i)->maddr + (ext + i)->length == (ext + n)->maddr)) {
+			(ext + i)->length += (ext + n)->length;
+			(ext + n)->length = 0;
+			//memset((ext+n), 0, sizeof(struct memory_extent));
+		} else {
+			i = n;
+		}
+	}
+
+	//compact array removing glued extents
+	for (n = 2, i = 1; n < n_ext; n++) {
+		if ((ext + n)->length != 0) {
+			memcpy(ext + i, ext + n, sizeof(struct memory_extent));
+			(ext + n)->length = 0;
+			i++;
+		}
+	}
+
+	n_ext = i;
+	ext = realloc(ext, sizeof(struct memory_extent) * n_ext);
+
+	extern int cache_hits;
+	fprintf(debug, "     n_ext %d\n", n_ext);
+	fprintf(debug, "     cache_hits %d\n", cache_hits);
+	*extents_out = ext;
+	return n_ext;
+	err: if (ext) {
+		free(ext);
+		*extents_out = NULL;
+	}
+	return 0;
+}
+
+/*
+ * Parse guest crash_notes and set guest cpu states
+ * crash_notes is allocated per-cpu in kernel. This depends stronglu on
+ * kernel config
+ * TODO add support for non-smp, slab per-cpu and array based per-cpu
+ */
+extern int parse_crash_note_32(struct dump *dump, struct domain *d, vaddr_t note_p, struct cpu_state *guest_cpu);
+
+int x86_32_parse_guest_cpus(struct dump *dump, struct domain *d) {
+	struct symbol *sym;
+	vaddr_t crash_notes = 0;
+	vaddr_t cpu_note = 0;
+	vaddr_t cpu_offset = 0;
+	struct cpu_state tmp_cpu;
+	char * sname;
+	int c;
+
+	// find crash_notes
+	sname = "crash_notes";
+	sym = symtab_lookup_name(d->symtab, sname);
+	if (!sym) {
+		fprintf(debug, "Error Symbol not found: %s\n", sname);
+		goto err;
+	}
+	crash_notes = kdump_read_uint32_vaddr(dump, d, sym->address);
+
+	fprintf(debug, "crash_notes: %llx\n", crash_notes);
+
+	// find __per_cpu_offset
+	sname = "__per_cpu_offset";
+	sym = symtab_lookup_name(d->symtab, sname);
+	if (!sym) {
+		fprintf(debug, "Error Symbol not found: %s\n", sname);
+		goto err;
+	}
+
+	for (c = 0; c < d->nr_vcpus; c++) {
+		cpu_offset = kdump_read_uint32_vaddr(dump, d, sym->address + 4 * c);
+		cpu_note = crash_notes + cpu_offset;
+		fprintf(debug, "cpu %d cpu_offset: %llx cpu_note %llx \n", c, cpu_offset, cpu_note);
+		if (parse_crash_note_32(dump, d, cpu_note, &d->guest_cpus[c])) {
+			continue;
+		}
+
+		// hack - guest cpus should be the same as vcpu but with different registers
+		memcpy(&tmp_cpu, &d->vcpus[c], sizeof(tmp_cpu));
+		tmp_cpu.x86_regs = d->guest_cpus[c].x86_regs;
+		memcpy(&d->guest_cpus[c], &tmp_cpu, sizeof(tmp_cpu));
+
+		d->guest_cpus[c].valid = 1;
+		fprintf(debug, "cpu %d crashnote OK\n", c);
+	}
+	return 0;
+
+	err: return 1;
 }
 
 static int x86_32_parse_crash_regs(struct dump *dump, void *_cr, struct cpu_state *cpu)
