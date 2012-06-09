@@ -97,8 +97,7 @@ int parse_idle_vcpus(struct dump *dump)
 struct dump *open_dump(const char *fn, struct symbol_table *xen_symtab,
 		       int nr_symtabs, const char **symtabs)
 {
-	extern int parse_dump_32(struct dump *dump);
-	extern int parse_dump_64(struct dump *dump);
+	extern int parse_dump(struct dump *dump);
 
 	unsigned char ident[EI_NIDENT];
 	struct dump *dump;
@@ -133,14 +132,17 @@ struct dump *open_dump(const char *fn, struct symbol_table *xen_symtab,
 
 	switch ( ident[EI_CLASS] ) {
 	case ELFCLASS32:
-		if (parse_dump_32(dump))
+		if (parse_dump(dump))
 		{
-			fprintf(debug, "failed to parse 32 bit dump\n");
+			fprintf(debug,  "Error 32 bit ELF dumps are not supported.\n");
+			fprintf(debug,  "Use kexec with --elf64-core-headers parameter.\n");
+			fprintf(stderr, "Error 32 bit ELF dumps are not supported.\n");
+			fprintf(stderr, "Use kexec with --elf64-core-headers parameter.\n");
 			goto out_err;
 		}
 		break;
 	case ELFCLASS64:
-		if (parse_dump_64(dump))
+		if (parse_dump(dump))
 		{
 			fprintf(debug, "failed to parse 64 bit dump\n");
 			goto out_err;
@@ -165,34 +167,6 @@ struct dump *open_dump(const char *fn, struct symbol_table *xen_symtab,
  out_err:
 	close_dump(dump);
 	return NULL;
-}
-
-int create_elf_header_xen(FILE *f, struct dump *dump, mem_range_t * mr_first) {
-	extern int create_elf_header_xen_32(FILE *f, struct dump *dump, mem_range_t * mr_first);
-	extern int create_elf_header_xen_64(FILE *f, struct dump *dump, mem_range_t * mr_first);
-	// dump->e_machine defines xen platform - 32/64
-	switch (dump->e_machine) {
-	case EM_386:
-		return create_elf_header_xen_32(f, dump, mr_first);
-	case EM_X86_64:
-		return create_elf_header_xen_64(f, dump, mr_first);
-	default:
-		fprintf(debug, "create_elf_header_xen: unknown machine class %d\n", dump->e_machine);
-		return 1;
-	}
-}
-
-int create_elf_header_dom(FILE *f, struct dump *dump, int dom_id) {
-	extern int create_elf_header_dom_32(FILE *f, struct dump *dump, int dom_id);
-	extern int create_elf_header_dom_64(FILE *f, struct dump *dump, int dom_id);
-	struct domain *d = &dump->domains[dom_id];
-	// FIXME it works but we better check vcpu bitness
-	if (d->has_32bit_shinfo) {
-		return create_elf_header_dom_32(f, dump, dom_id);
-	} else {
-		return create_elf_header_dom_64(f, dump, dom_id);
-	}
-	return 0;
 }
 
 void hex_dump(int offset, void *ptr, int size) {

@@ -14,22 +14,6 @@
 #include "bitness.h"
 #include "memory.h"
 
-#if ELFSIZE == 32
-
-#define FN(x) x##_32
-#define TYPE(x) Elf32_##x
-
-#elif ELFSIZE == 64
-
-#define FN(x) x##_64
-#define TYPE(x) Elf64_##x
-
-#else
-
-#error "unknown elf size"
-
-#endif
-
 /* NOTE!!!
  * Even on 32 bit platform we use Elf64_Ehdr and Elf64_Phdr
  * in order to describe large memory configuration like PAE.
@@ -196,11 +180,7 @@ static void __init_elf_header(Elf64_Ehdr *h) {
 	h->e_ident[5] = ELFDATA2LSB;
 	h->e_ident[6] = EV_CURRENT;
 	h->e_type = ET_CORE;
-	if (ELFSIZE == 32) {
-		h->e_machine = EM_386;
-	} else {
-		h->e_machine = EM_X86_64;
-	}
+	h->e_machine = EM_X86_64;
 	h->e_version = EV_CURRENT;
 	h->e_entry = DYNAMICALLY_FILLED;
 	h->e_phoff = sizeof(Elf64_Ehdr);
@@ -270,7 +250,7 @@ static int parse_note_XEN_CORE(struct dump *dump, off64_t offset, Elf_Nhdr *note
 }
 
 // read crash_note from vaddr and set current_cpu to the state
-int FN(parse_crash_note)(struct dump *dump, struct domain *d, vaddr_t note_p, struct cpu_state *guest_cpu) {
+int parse_crash_note(struct dump *dump, struct domain *d, vaddr_t note_p, struct cpu_state *guest_cpu) {
 	Elf_Nhdr *note = NULL;
 	int size = 0;
 	note = malloc(sizeof(*note));
@@ -541,7 +521,7 @@ static int foreach_phdr_type(struct dump *dump,
 	return 0;
 }
 
-int FN(create_elf_header_xen)(FILE *f, struct dump *dump, mem_range_t * mr_first) {
+int create_elf_header_xen(FILE *f, struct dump *dump, mem_range_t * mr_first) {
 	phdr_info_t *p_info;
 	mem_range_t * mr = mr_first;
 
@@ -562,7 +542,7 @@ int FN(create_elf_header_xen)(FILE *f, struct dump *dump, mem_range_t * mr_first
 	return ftell(f);
 }
 
-int FN(create_elf_header_dom)(FILE *f, struct dump *dump, int dom_id) {
+int create_elf_header_dom(FILE *f, struct dump *dump, int dom_id) {
 	struct elf_all all;
 	// NOTE! elf header is always 64 bit type even for 32 bit platform
 	// but e_machine is different for 32/64
@@ -584,7 +564,11 @@ int FN(create_elf_header_dom)(FILE *f, struct dump *dump, int dom_id) {
 	// initialize elf header
 	ehdr = &all.ehdr;
 	__init_elf_header(ehdr);
-
+	if (d->has_32bit_shinfo) {
+		ehdr->e_machine = EM_386;
+	} else {
+		ehdr->e_machine = EM_X86_64;
+	}
 	// add note(s) program header
 	p_info = __add_phdr_info(&all, PT_NOTE, 0);
 	// for each domain cpu add "CORE" note
@@ -629,7 +613,7 @@ int FN(create_elf_header_dom)(FILE *f, struct dump *dump, int dom_id) {
 	return ftell(f);
 }
 
-int FN(parse_dump)(struct dump *dump)
+int parse_dump(struct dump *dump)
 {
 	extern struct arch arch_x86_32;
 	extern struct arch arch_x86_64;

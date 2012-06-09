@@ -262,7 +262,7 @@ int x86_32_get_vmalloc_extents(struct dump *dump, struct domain *d, struct cpu_s
  * kernel config
  * TODO add support for non-smp, slab per-cpu and array based per-cpu
  */
-extern int parse_crash_note_32(struct dump *dump, struct domain *d, vaddr_t note_p, struct cpu_state *guest_cpu);
+extern int parse_crash_note(struct dump *dump, struct domain *d, vaddr_t note_p, struct cpu_state *guest_cpu);
 
 int x86_32_parse_guest_cpus(struct dump *dump, struct domain *d) {
 	struct symbol *sym;
@@ -296,7 +296,7 @@ int x86_32_parse_guest_cpus(struct dump *dump, struct domain *d) {
 		cpu_offset = kdump_read_uint32_vaddr(dump, d, sym->address + 4 * c);
 		cpu_note = crash_notes + cpu_offset;
 		fprintf(debug, "cpu %d cpu_offset: %llx cpu_note %llx \n", c, cpu_offset, cpu_note);
-		if (parse_crash_note_32(dump, d, cpu_note, &d->guest_cpus[c])) {
+		if (parse_crash_note(dump, d, cpu_note, &d->guest_cpus[c])) {
 			continue;
 		}
 

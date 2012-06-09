@@ -14,7 +14,7 @@ DEPS     = .*.d arch/.*.d
 
 LDFLAGS := -g
 
-OBJS := main.o kdump.o elf32.o elf64.o symbols.o memory.o domain.o arch/x86.o \
+OBJS := main.o kdump.o elf.o symbols.o memory.o domain.o arch/x86.o \
 	arch/x86_32.o arch/x86_64.o bitness32.o bitness64.o
 
 all: kdump
@@ -43,14 +43,6 @@ HYPERCALL_NAMES_H := /usr/include/xen/xen.h
 endif
 
 .c.o:
-	gcc -o $@ $(CFLAGS) -c $<
-
-elf32.o: CFLAGS += -DELFSIZE=32
-elf32.o: elf.c
-	gcc -o $@ $(CFLAGS) -c $<
-
-elf64.o: CFLAGS += -DELFSIZE=64
-elf64.o: elf.c
 	gcc -o $@ $(CFLAGS) -c $<
 
 bitness32.o: CFLAGS += -DBITS_PER_LONG=32
