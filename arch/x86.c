@@ -5,7 +5,7 @@
 #include "kdump.h"
 #include "memory.h"
 
-int x86_virt_to_mach(struct dump *dump, maddr_t cr3, int paging_levels, vaddr_t vaddr, maddr_t *maddr)
+int x86_virt_to_mach(maddr_t cr3, int paging_levels, vaddr_t vaddr, maddr_t *maddr)
 {
 	maddr_t pdp;
 	maddr_t pd;
@@ -24,7 +24,7 @@ int x86_virt_to_mach(struct dump *dump, maddr_t cr3, int paging_levels, vaddr_t 
 	{
 		maddr_t offset = (vaddr >> 39) & ((1<<9)-1);
 		uint64_t pml4e;
-		pml4e = kdump_read_uint64_maddr(dump, cr3 + 8*offset);
+		pml4e = kdump_read_uint64_maddr(cr3 + 8*offset);
 		if (!(pml4e&1)) /* Not present */
 		{
 			fprintf(debug, "PML4 @ %"PRIx64"\n", cr3);
@@ -50,7 +50,7 @@ int x86_virt_to_mach(struct dump *dump, maddr_t cr3, int paging_levels, vaddr_t 
 		else
 			offset = (vaddr >> 30) & ((1<<2)-1);
 
-		pdpe = kdump_read_uint64_maddr(dump, pdp + 8*offset);
+		pdpe = kdump_read_uint64_maddr(pdp + 8*offset);
 
 		if (!(pdpe&1)) /* Not present */
 		{
@@ -73,7 +73,7 @@ int x86_virt_to_mach(struct dump *dump, maddr_t cr3, int paging_levels, vaddr_t 
 	{
 		maddr_t offset = (vaddr >> 21) & ((1<<9)-1);
 		uint64_t pde;
-		pde = kdump_read_uint64_maddr(dump, pd + 8*offset);
+		pde = kdump_read_uint64_maddr(pd + 8*offset);
 
 		if (!(pde&1)) /* Not present */
 		{
@@ -107,7 +107,7 @@ int x86_virt_to_mach(struct dump *dump, maddr_t cr3, int paging_levels, vaddr_t 
 	{
 		maddr_t offset = (vaddr >> 12) & ((1<<9)-1);
 		uint64_t pte;
-		pte = kdump_read_uint64_maddr(dump, pt + 8*offset);
+		pte = kdump_read_uint64_maddr(pt + 8*offset);
 
 		if (!(pte&1)) /* Not present */
 		{

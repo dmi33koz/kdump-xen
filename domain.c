@@ -42,7 +42,7 @@ static int allocate_vcpus(struct domain *d, int nr)
 	return 0;
 }
 
-static int allocate_domains(struct dump *dump, int nr)
+static int allocate_domains(int nr)
 {
 	void *tmp;
 
@@ -78,7 +78,7 @@ void free_domain(struct domain *domain)
 #define SHARED_compat_max_pfn 0x90c
 
 
-static int parse_domain(struct dump *dump, vaddr_t domain, int nr_symtabs, const char **symtabs)
+static int parse_domain(vaddr_t domain, int nr_symtabs, const char **symtabs)
 {
 	unsigned char tmp[DOMAIN_sizeof];
 	struct domain *d;
@@ -89,13 +89,13 @@ static int parse_domain(struct dump *dump, vaddr_t domain, int nr_symtabs, const
 
 	ASSERT_REQUIRED_SYMBOLS(1);
 
-	if (kdump_read_vaddr(dump, NULL, domain, tmp, DOMAIN_sizeof) != DOMAIN_sizeof)
+	if (kdump_read_vaddr(NULL, domain, tmp, DOMAIN_sizeof) != DOMAIN_sizeof)
 	{
 		fprintf(debug, "Failed to read domain info\n");
 		return 1;
 	}
 
-	if (allocate_domains(dump, dump->nr_domains+1))
+	if (allocate_domains(dump->nr_domains+1))
 	{
 		fprintf(debug, "failed to allocate memory for domain\n");
 		return 1;
@@ -105,17 +105,17 @@ static int parse_domain(struct dump *dump, vaddr_t domain, int nr_symtabs, const
 
 	d->domid = *(uint16_t*)(tmp+DOMAIN_id);
 	d->v_domain_info = domain;
-	d->v_shared_info = kdump_read_pointer_vaddr(dump, NULL, domain+DOMAIN_shared_info);
-	d->has_32bit_shinfo = kdump_read_pointer_vaddr(dump, NULL, domain+DOMAIN_has_32bit_shinfo);
-	d->is_hvm = kdump_read_uint8_vaddr(dump, NULL, domain+DOMAIN_is_hvm);
-	d->is_privileged = kdump_read_uint8_vaddr(dump, NULL, domain+DOMAIN_is_privileged);
-	d->is_32bit_pv = kdump_read_uint8_vaddr(dump, NULL, domain+DOMAIN_is_32bit_pv);
+	d->v_shared_info = kdump_read_pointer_vaddr(NULL, domain+DOMAIN_shared_info);
+	d->has_32bit_shinfo = kdump_read_pointer_vaddr(NULL, domain+DOMAIN_has_32bit_shinfo);
+	d->is_hvm = kdump_read_uint8_vaddr(NULL, domain+DOMAIN_is_hvm);
+	d->is_privileged = kdump_read_uint8_vaddr(NULL, domain+DOMAIN_is_privileged);
+	d->is_32bit_pv = kdump_read_uint8_vaddr(NULL, domain+DOMAIN_is_32bit_pv);
 
-	max_vcpus = kdump_read_uint32_vaddr(dump, NULL, domain+DOMAIN_max_vcpus);
-	vcpu_array = kdump_read_pointer_vaddr(dump, NULL, domain+DOMAIN_vcpus);
+	max_vcpus = kdump_read_uint32_vaddr(NULL, domain+DOMAIN_max_vcpus);
+	vcpu_array = kdump_read_pointer_vaddr(NULL, domain+DOMAIN_vcpus);
 
 	for(i=0; i<max_vcpus ;i++) {
-		vaddr_t vcpu_info = kdump_read_pointer_vaddr(dump, NULL, vcpu_array+(i*kdump_sizeof_pointer(dump)));
+		vaddr_t vcpu_info = kdump_read_pointer_vaddr(NULL, vcpu_array+(i*kdump_sizeof_pointer(dump)));
 		struct cpu_state *vcpu;
 
 		/* XXX: doesn't properly handle sparse VCPU map. Not sure if that can occur */
@@ -129,7 +129,7 @@ static int parse_domain(struct dump *dump, vaddr_t domain, int nr_symtabs, const
 			return 1;
 		}
 		vcpu = &d->vcpus[d->nr_vcpus-1];
-		if (vcpu_info && kdump_parse_vcpu(dump, vcpu, vcpu_info))
+		if (vcpu_info && kdump_parse_vcpu(vcpu, vcpu_info))
 		{
 			fprintf(debug, "failed to parse DOM%d VCPU%d\n",
 				d->domid, vcpu->nr);
@@ -142,15 +142,15 @@ static int parse_domain(struct dump *dump, vaddr_t domain, int nr_symtabs, const
 		}
 	}
 	if (d->has_32bit_shinfo) {
-		d->shared_info.max_pfn = kdump_read_pfn_vaddr(dump, d, d->v_shared_info + SHARED_compat_max_pfn);
+		d->shared_info.max_pfn = kdump_read_pfn_vaddr(d, d->v_shared_info + SHARED_compat_max_pfn);
 		d->shared_info.pfn_to_mfn_list_list =
-				kdump_read_pfn_vaddr(dump, d,
+				kdump_read_pfn_vaddr(d,
 						d->v_shared_info + SHARED_compat_pfn_to_mfn_list_list) << PAGE_SHIFT;
 
 	} else {
-		d->shared_info.max_pfn = kdump_read_pfn_vaddr(dump, d, d->v_shared_info + SHARED_max_pfn);
+		d->shared_info.max_pfn = kdump_read_pfn_vaddr(d, d->v_shared_info + SHARED_max_pfn);
 		d->shared_info.pfn_to_mfn_list_list =
-				kdump_read_pfn_vaddr(dump, d,
+				kdump_read_pfn_vaddr(d,
 					 d->v_shared_info + SHARED_pfn_to_mfn_list_list) << PAGE_SHIFT;
 	}
 
@@ -168,14 +168,14 @@ static int parse_domain(struct dump *dump, vaddr_t domain, int nr_symtabs, const
 		fprintf(debug, "Error Symbol not found high_memory\n");
 	} else {
 		if (d->has_32bit_shinfo) {
-			d->high_memory = kdump_read_uint32_vaddr(dump, d, high_memory_s->address);
+			d->high_memory = kdump_read_uint32_vaddr(d, high_memory_s->address);
 		} else {
-			d->high_memory = kdump_read_uint64_vaddr(dump, d, high_memory_s->address);
+			d->high_memory = kdump_read_uint64_vaddr(d, high_memory_s->address);
 		}
 		fprintf(debug, "Symbol high_memory fount 0x%llx\n", d->high_memory);
 	}
 
-	if (kdump_parse_guest_cpus(dump, d))
+	if (kdump_parse_guest_cpus(d))
 	{
 		fprintf(debug, "failed to parse DOM%d guest cpus\n",
 			d->domid);
@@ -184,7 +184,7 @@ static int parse_domain(struct dump *dump, vaddr_t domain, int nr_symtabs, const
 	return 0;
 }
 
-int parse_domain_list(struct dump *dump, int nr_symtabs, const char **symtabs)
+int parse_domain_list(int nr_symtabs, const char **symtabs)
 {
 	vaddr_t domain;
 	struct domain *d;
@@ -193,26 +193,26 @@ int parse_domain_list(struct dump *dump, int nr_symtabs, const char **symtabs)
 	if (!have_required_symbols)
 		return 1;
 
-	domain = kdump_read_pointer_vaddr(dump,	NULL, domain_list);
+	domain = kdump_read_pointer_vaddr(NULL, domain_list);
 
 	while(domain != 0)
 	{
-		if (parse_domain(dump, domain, nr_symtabs, symtabs))
+		if (parse_domain(domain, nr_symtabs, symtabs))
 		{
 			fprintf(debug, "Failed to parse domain at %"PRIxVADDR"\n",
 				domain);
 			return 1;
 		}
-		domain = kdump_read_pointer_vaddr(dump, NULL, domain+DOMAIN_next);
+		domain = kdump_read_pointer_vaddr(NULL, domain+DOMAIN_next);
 	}
 
-	for_each_domain(dump, d)
+	for_each_domain(d)
 	{
 		for_each_vcpu(d, v)
 		{
 			v->virtual.domain = d;
 
-			for_each_pcpu(dump, p)
+			for_each_pcpu(p)
 			{
 				if (p->physical.v_curr_vcpu == v->virtual.v_struct_vcpu)
 					p->physical.curr_vcpu = v;

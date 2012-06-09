@@ -96,14 +96,14 @@ static vaddr_t get_cpu_info(vaddr_t stack)
 	return cpu_info;
 }
 
-static int x86_32_heap_limits(struct dump *dump, maddr_t *start, maddr_t *end)
+static int x86_32_heap_limits(maddr_t *start, maddr_t *end)
 {
 	*start = 0x100000ULL; /* Skip everything before 1M. */
 	*end   = 0xc00000ULL; /* DIRECTMAP_PHYS_END. */
 	return 0;
 }
 
-static int x86_32_parse_prstatus(struct dump *dump, void *_prs, struct cpu_state *cpu)
+static int x86_32_parse_prstatus(void *_prs, struct cpu_state *cpu)
 {
 	ELF_Prstatus *prs = _prs;
 
@@ -178,7 +178,7 @@ struct vm_struct {
 	void *caller;
 };
 
-int x86_32_get_vmalloc_extents(struct dump *dump, struct domain *d, struct cpu_state *cpu, struct memory_extent ** extents_out) {
+int x86_32_get_vmalloc_extents(struct domain *d, struct cpu_state *cpu, struct memory_extent ** extents_out) {
 	struct symbol *vmlist_s;
 	struct vm_struct ve;
 	vaddr_t ve_addr, vaddr;
@@ -192,10 +192,10 @@ int x86_32_get_vmalloc_extents(struct dump *dump, struct domain *d, struct cpu_s
 		fprintf(debug, "Error Symbol not found vmlist\n");
 		goto err;
 	}
-	ve_addr = kdump_read_uint32_vaddr(dump, d, vmlist_s->address);
+	ve_addr = kdump_read_uint32_vaddr(d, vmlist_s->address);
 
 	while (ve_addr) {
-		if (kdump_read_vaddr(dump, NULL, ve_addr, &ve, sizeof(ve)) != sizeof(ve)) {
+		if (kdump_read_vaddr(NULL, ve_addr, &ve, sizeof(ve)) != sizeof(ve)) {
 			fprintf(debug, "vmlist entry error unavailable.");
 			goto err;
 		}
@@ -206,7 +206,7 @@ int x86_32_get_vmalloc_extents(struct dump *dump, struct domain *d, struct cpu_s
 			// for every page of vmalloc area find machine address and fill extents
 			for (n = 0; n < ve.nr_pages; n++) {
 				vaddr = (vaddr_t) (uint32_t) ve.addr + (n << PAGE_SHIFT);
-				maddr = kdump_virt_to_mach(dump, &dump->cpus[0], vaddr);
+				maddr = kdump_virt_to_mach(&dump->cpus[0], vaddr);
 				(ext + n_ext)->maddr = maddr;
 				(ext + n_ext)->vaddr = vaddr;
 				(ext + n_ext)->paddr = -1;
@@ -219,7 +219,7 @@ int x86_32_get_vmalloc_extents(struct dump *dump, struct domain *d, struct cpu_s
 	}
 	// this takes extents array and and fills
 	// pseudo physical address for every machine address - paddr
-	xen_m2p(dump, d, ext, n_ext);
+	xen_m2p(d, ext, n_ext);
 
 	// find contiguous vaddr - paddr segments ang glue them together
 	for (n = 1, i = 0; n < n_ext; n++) {
@@ -262,9 +262,9 @@ int x86_32_get_vmalloc_extents(struct dump *dump, struct domain *d, struct cpu_s
  * kernel config
  * TODO add support for non-smp, slab per-cpu and array based per-cpu
  */
-extern int parse_crash_note(struct dump *dump, struct domain *d, vaddr_t note_p, struct cpu_state *guest_cpu);
+extern int parse_crash_note(struct domain *d, vaddr_t note_p, struct cpu_state *guest_cpu);
 
-int x86_32_parse_guest_cpus(struct dump *dump, struct domain *d) {
+int x86_32_parse_guest_cpus(struct domain *d) {
 	struct symbol *sym;
 	vaddr_t crash_notes = 0;
 	vaddr_t cpu_note = 0;
@@ -280,7 +280,7 @@ int x86_32_parse_guest_cpus(struct dump *dump, struct domain *d) {
 		fprintf(debug, "Error Symbol not found: %s\n", sname);
 		goto err;
 	}
-	crash_notes = kdump_read_uint32_vaddr(dump, d, sym->address);
+	crash_notes = kdump_read_uint32_vaddr(d, sym->address);
 
 	fprintf(debug, "crash_notes: %llx\n", crash_notes);
 
@@ -293,10 +293,10 @@ int x86_32_parse_guest_cpus(struct dump *dump, struct domain *d) {
 	}
 
 	for (c = 0; c < d->nr_vcpus; c++) {
-		cpu_offset = kdump_read_uint32_vaddr(dump, d, sym->address + 4 * c);
+		cpu_offset = kdump_read_uint32_vaddr(d, sym->address + 4 * c);
 		cpu_note = crash_notes + cpu_offset;
 		fprintf(debug, "cpu %d cpu_offset: %llx cpu_note %llx \n", c, cpu_offset, cpu_note);
-		if (parse_crash_note(dump, d, cpu_note, &d->guest_cpus[c])) {
+		if (parse_crash_note(d, cpu_note, &d->guest_cpus[c])) {
 			continue;
 		}
 
@@ -313,7 +313,7 @@ int x86_32_parse_guest_cpus(struct dump *dump, struct domain *d) {
 	err: return 1;
 }
 
-static int x86_32_parse_crash_regs(struct dump *dump, void *_cr, struct cpu_state *cpu)
+static int x86_32_parse_crash_regs(void *_cr, struct cpu_state *cpu)
 {
 	crash_xen_core_t *cr = _cr;
 	maddr_t current;
@@ -333,10 +333,10 @@ static int x86_32_parse_crash_regs(struct dump *dump, void *_cr, struct cpu_stat
 		current += CPUINFO_sizeof;
 		current -= kdump_sizeof_pointer(dump);
 
-		cpu->nr = kdump_read_uint32_vaddr_cpu(dump, cpu, current-4);
+		cpu->nr = kdump_read_uint32_vaddr_cpu(cpu, current-4);
 
 		cpu->physical.v_current =
-			kdump_read_pointer_vaddr_cpu(dump, cpu, current);
+			kdump_read_pointer_vaddr_cpu(cpu, current);
 
 		if (symtab_lookup_address(dump->symtab, cpu->x86_regs.eip) == __context_switch_symbol)
 			cpu->flags |= CPU_CONTEXT_SWITCH;
@@ -345,7 +345,7 @@ static int x86_32_parse_crash_regs(struct dump *dump, void *_cr, struct cpu_stat
 	return 0;
 }
 
-static int x86_32_parse_vcpu(struct dump *dump, struct cpu_state *cpu, vaddr_t vcpu_info)
+static int x86_32_parse_vcpu(struct cpu_state *cpu, vaddr_t vcpu_info)
 {
 	unsigned char vcpu[VCPU_sizeof];
 	struct cpu_user_regs_x86_32 user_regs;
@@ -357,7 +357,7 @@ static int x86_32_parse_vcpu(struct dump *dump, struct cpu_state *cpu, vaddr_t v
 	cpu->flags &= ~CPU_PHYSICAL;
 	cpu->flags |= CPU_CORE_STATE;
 
-	if (kdump_read_vaddr(dump, NULL, vcpu_info, vcpu, VCPU_sizeof) != VCPU_sizeof)
+	if (kdump_read_vaddr(NULL, vcpu_info, vcpu, VCPU_sizeof) != VCPU_sizeof)
 		return 1;
 
 	cpu->nr = *(uint32_t*)&vcpu[VCPU_vcpu_id];
@@ -389,7 +389,7 @@ static int x86_32_parse_vcpu(struct dump *dump, struct cpu_state *cpu, vaddr_t v
 		if (pcpu->physical.v_current == vcpu_info)
 			cpu->flags |= CPU_RUNNING;
 
-		if (kdump_read_vaddr_cpu(dump, pcpu,
+		if (kdump_read_vaddr_cpu(pcpu,
 					 get_cpu_info(pcpu->x86_regs.esp),
 					 &user_regs, sizeof(struct cpu_user_regs_x86_32))
 		    != sizeof(struct cpu_user_regs_x86_32))
@@ -449,7 +449,7 @@ static int x86_32_parse_vcpu(struct dump *dump, struct cpu_state *cpu, vaddr_t v
 	return 0;
 }
 
-static int x86_32_parse_hypervisor(struct dump *dump, void *note)
+static int x86_32_parse_hypervisor(void *note)
 {
 	xen_crash_xen_regs_t *x = note;
 
@@ -457,22 +457,22 @@ static int x86_32_parse_hypervisor(struct dump *dump, void *note)
 	dump->xen_minor_version = x->xen_minor_version;
 	dump->tainted = x->tainted;
 	if (x->xen_extra_version)
-		dump->xen_extra_version = kdump_read_string_maddr(dump, x->xen_extra_version);
+		dump->xen_extra_version = kdump_read_string_maddr(x->xen_extra_version);
 	if (x->xen_changeset)
-		dump->xen_changeset     = kdump_read_string_maddr(dump, x->xen_changeset);
+		dump->xen_changeset     = kdump_read_string_maddr(x->xen_changeset);
 	if (x->xen_compiler)
-		dump->xen_compiler      = kdump_read_string_maddr(dump, x->xen_compiler);
+		dump->xen_compiler      = kdump_read_string_maddr(x->xen_compiler);
 	if (x->xen_compile_date)
-		dump->xen_compile_date  = kdump_read_string_maddr(dump, x->xen_compile_date);
+		dump->xen_compile_date  = kdump_read_string_maddr(x->xen_compile_date);
 	if (x->xen_compile_time)
-		dump->xen_compile_time  = kdump_read_string_maddr(dump, x->xen_compile_time);
+		dump->xen_compile_time  = kdump_read_string_maddr(x->xen_compile_time);
 
 	return 0;
 }
 
-static int x86_32_print_cpu_state(FILE *o, struct dump *dump, struct cpu_state *cpu)
+static int x86_32_print_cpu_state(FILE *o, struct cpu_state *cpu)
 {
-	struct symbol_table *symtab = kdump_symtab_for_cpu(dump, cpu);
+	struct symbol_table *symtab = kdump_symtab_for_cpu(cpu);
 	int len = 0;
 
 	if (cpu->flags & CPU_CORE_STATE)
@@ -583,16 +583,16 @@ static int x86_32_print_cpu_state(FILE *o, struct dump *dump, struct cpu_state *
 	return len;
 }
 
-static vaddr_t x86_32_stack(struct dump *dump, struct cpu_state *cpu)
+static vaddr_t x86_32_stack(struct cpu_state *cpu)
 {
 	return cpu->x86_regs.esp;
 }
-static vaddr_t x86_32_instruction_pointer(struct dump *dump, struct cpu_state *cpu)
+static vaddr_t x86_32_instruction_pointer(struct cpu_state *cpu)
 {
 	return cpu->x86_regs.eip;
 }
 
-static maddr_t x86_32_virt_to_mach(struct dump *dump, struct cpu_state *cpu, vaddr_t virt)
+static maddr_t x86_32_virt_to_mach(struct cpu_state *cpu, vaddr_t virt)
 {
 	vaddr_t page_offset;
 
@@ -610,12 +610,12 @@ static maddr_t x86_32_virt_to_mach(struct dump *dump, struct cpu_state *cpu, vad
 		(cpu->flags&CPU_EXTD_STATE) && (uint32_t)cpu->x86_regs.cr[3]);
 
 	if ((cpu->flags&CPU_EXTD_STATE) && cpu->x86_regs.cr[3]) {
-		extern int x86_virt_to_mach(struct dump *dump, uint64_t cr3,
+		extern int x86_virt_to_mach(uint64_t cr3,
 					    int paging_levels,
 					    vaddr_t virt, maddr_t *maddr);
 		maddr_t maddr;
 
-		if(x86_virt_to_mach(dump, cpu->x86_regs.cr[3], paging_levels, virt, &maddr))
+		if(x86_virt_to_mach(cpu->x86_regs.cr[3], paging_levels, virt, &maddr))
 			goto page_offset;
 
 		return maddr;

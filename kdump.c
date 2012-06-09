@@ -15,7 +15,7 @@
 #include "memory.h"
 #include "symbols.h"
 
-size_t kdump_read(struct dump *dump, void *buf, off64_t offset, size_t length)
+size_t kdump_read(void *buf, off64_t offset, size_t length)
 {
 	int fd = dump->fd;
 
@@ -40,7 +40,7 @@ static inline int is_elf(const unsigned char *ident)
                  ident[EI_MAG3] == ELFMAG3 );
 }
 
-void close_dump(struct dump* dump)
+void close_dump()
 {
 	struct domain *d;
 
@@ -58,7 +58,7 @@ void close_dump(struct dump* dump)
 
 	symtab_free(dump->symtab);
 
-	for_each_domain(dump, d)
+	for_each_domain(d)
 		free_domain(d);
 
 	free(dump->domains);
@@ -67,7 +67,7 @@ void close_dump(struct dump* dump)
 	free(dump);
 }
 
-int parse_idle_vcpus(struct dump *dump)
+int parse_idle_vcpus()
 {
 	struct cpu_state *pcpu;
 	vaddr_t va;
@@ -76,17 +76,17 @@ int parse_idle_vcpus(struct dump *dump)
 
 	va = idle_vcpu;
 
-	for_each_pcpu(dump, pcpu)
+	for_each_pcpu(pcpu)
 	{
-		pcpu->physical.v_idle_vcpu = kdump_read_pointer_vaddr(dump, NULL, va);
+		pcpu->physical.v_idle_vcpu = kdump_read_pointer_vaddr(NULL, va);
 		va += kdump_sizeof_pointer(dump);
 	}
 
 	va = per_cpu__curr_vcpu;
 
-	for_each_pcpu(dump, pcpu)
+	for_each_pcpu(pcpu)
 	{
-		pcpu->physical.v_curr_vcpu = kdump_read_pointer_vaddr(dump, NULL, va);
+		pcpu->physical.v_curr_vcpu = kdump_read_pointer_vaddr(NULL, va);
 		va += kdump_sizeof_percpu(dump);
 	}
 
@@ -94,36 +94,35 @@ int parse_idle_vcpus(struct dump *dump)
 }
 
 
-struct dump *open_dump(const char *fn, struct symbol_table *xen_symtab,
+void open_dump(const char *fn, struct symbol_table *xen_symtab,
 		       int nr_symtabs, const char **symtabs)
 {
-	extern int parse_dump(struct dump *dump);
+	extern int parse_dump();
 
 	unsigned char ident[EI_NIDENT];
-	struct dump *dump;
 	int fd, i;
 
 	fd = open(fn, O_RDONLY|O_LARGEFILE);
 	if (fd == -1) {
 		fprintf(debug, "failed to open %s: %s\n", fn, strerror(errno));
-		return NULL;
+		return;
 	}
 
 	i = read(fd, ident, EI_NIDENT);
 	if (i != EI_NIDENT) {
 		fprintf(debug, "failed to read elf header: %s\n", strerror(errno));
-		return NULL;
+		return;
 	}
 
 	if (!is_elf(ident)) {
 		fprintf(debug, "not an elf file\n");
-		return NULL;
+		return;
 	}
 
 	dump = malloc(sizeof(*dump));
 	if (dump == NULL) {
 		fprintf(debug, "out of memory");
-		return NULL;
+		return;
 	}
 	memset(dump, 0, sizeof(*dump));
 
@@ -151,7 +150,7 @@ struct dump *open_dump(const char *fn, struct symbol_table *xen_symtab,
 	case ELFCLASSNONE:
 	default:
 		fprintf(debug, "invalid ELF class: %d\n", ident[EI_CLASS]);
-		return NULL;
+		goto out_err;
 
 	}
 
@@ -159,14 +158,15 @@ struct dump *open_dump(const char *fn, struct symbol_table *xen_symtab,
 	{
 		parse_idle_vcpus(dump);
 
-		parse_domain_list(dump, nr_symtabs, symtabs);
+		parse_domain_list(nr_symtabs, symtabs);
 	}
 
-	return dump;
+	return;
 
  out_err:
 	close_dump(dump);
-	return NULL;
+	dump = NULL;
+	return;
 }
 
 void hex_dump(int offset, void *ptr, int size) {

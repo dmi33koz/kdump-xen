@@ -21,6 +21,7 @@
 #include "bitness.h"
 
 FILE *debug, *output;
+struct dump *dump = NULL;
 
 struct symbol_table *xen_symtab = NULL;
 
@@ -125,7 +126,7 @@ static FILE *fopen_in_output_directory(const char *file, const char *mode)
 	return f;
 }
 
-static void dump_xen_version_info(struct dump *dump)
+static void dump_xen_version_info()
 {
 	fprintf(output, "Xen Version:\n");
 	fprintf(output, "  Xen version %"PRId64".%"PRId64"%s (%s) %s %s\n",
@@ -138,21 +139,21 @@ static void dump_xen_version_info(struct dump *dump)
 	fprintf(output, "\n");
 }
 
-static void dump_cpu_stack(FILE *o, struct dump *dump, struct cpu_state *cpu)
+static void dump_cpu_stack(FILE *o, struct cpu_state *cpu)
 {
 	vaddr_t stack_vaddr, stack_base, stack_limit;
 	uint8_t stack[PAGE_SIZE/sizeof(uint8_t)];
 	int i;
 	vaddr_t mask = 31;
 	vaddr_t instr, instr2;
-	struct symbol_table *symtab = kdump_symtab_for_cpu(dump, cpu);
-	int sizeof_pointer = kdump_sizeof_cpu_pointer(dump, cpu);
+	struct symbol_table *symtab = kdump_symtab_for_cpu(cpu);
+	int sizeof_pointer = kdump_sizeof_cpu_pointer(cpu);
 
-	stack_vaddr = kdump_stack(dump, cpu);
+	stack_vaddr = kdump_stack(cpu);
 	stack_base = stack_vaddr &~(PAGE_SIZE-1);
 	stack_limit = stack_base + 4096;
 
-	if (kdump_read_vaddr_cpu(dump, cpu, stack_base, stack, PAGE_SIZE) != PAGE_SIZE)
+	if (kdump_read_vaddr_cpu(cpu, stack_base, stack, PAGE_SIZE) != PAGE_SIZE)
 	{
 		fprintf(o, "\tStack unavailable.\n\n");
 		return;
@@ -176,13 +177,13 @@ static void dump_cpu_stack(FILE *o, struct dump *dump, struct cpu_state *cpu)
 
 	fprintf(o, "\n");
 	fprintf(o, "\tCode:\n\t  ");
-	instr = instr2 = kdump_instruction_pointer(dump, cpu);
+	instr = instr2 = kdump_instruction_pointer(cpu);
 	if(instr == 0)
 		goto no_code;
 
 	instr2 -= 21;
 	for(i=0; i<32; i++) {
-		uint8_t c = kdump_read_uint8_vaddr_cpu(dump, cpu, instr2+i);
+		uint8_t c = kdump_read_uint8_vaddr_cpu(cpu, instr2+i);
 		if (instr2+i == instr)
 			fprintf(o, "<%02x> ", c);
 		else
@@ -216,16 +217,16 @@ static void dump_cpu_stack(FILE *o, struct dump *dump, struct cpu_state *cpu)
 	return;
 }
 
-static void dump_pcpu_state(struct dump *dump)
+static void dump_pcpu_state()
 {
 	struct cpu_state *cpu;
 
 	fprintf(output, "Physical Processor State:\n");
-	for_each_pcpu(dump, cpu)
+	for_each_pcpu(cpu)
 	{
 		fprintf(output, "  PCPU%d host state:\n", cpu->nr);
-		kdump_print_cpu_state(output, dump, cpu);
-		dump_cpu_stack(output, dump, cpu);
+		kdump_print_cpu_state(output, cpu);
+		dump_cpu_stack(output, cpu);
 
 		fprintf(output, "  PCPU%d guest state:\n", cpu->nr);
 
@@ -234,8 +235,8 @@ static void dump_pcpu_state(struct dump *dump)
 			struct cpu_state *vcpu = cpu->physical.current;
 			fprintf(output, "\tDOMAIN%d VCPU%d\n",
 				vcpu->virtual.domain->domid, vcpu->nr);
-			kdump_print_cpu_state(output, dump, vcpu);
-			dump_cpu_stack(output, dump, vcpu);
+			kdump_print_cpu_state(output, vcpu);
+			dump_cpu_stack(output, vcpu);
 		}
 		else
 		{
@@ -245,7 +246,7 @@ static void dump_pcpu_state(struct dump *dump)
 	}
 }
 
-static void dump_machine_memory_map(struct dump *dump)
+static void dump_machine_memory_map()
 {
 	int i;
 
@@ -277,14 +278,14 @@ static void dump_machine_memory_map(struct dump *dump)
 }
 
 static void __dump_console_ring(FILE *o,
-				struct dump *dump, struct domain *domain,
+				struct domain *domain,
 				const char *indent,
 				vaddr_t ring_addr, uint32_t len,
 				uint32_t producer, uint32_t consumer)
 {
 	char ring[len];
 
-	if (kdump_read_vaddr(dump, domain, ring_addr, ring, len) != len)
+	if (kdump_read_vaddr(domain, ring_addr, ring, len) != len)
 	{
 		fprintf(stderr, "failed to read console ring\n");
 		return;
@@ -302,7 +303,7 @@ static void __dump_console_ring(FILE *o,
 	fprintf(o, "\n\n");
 }
 
-static void dump_xen_console_ring(struct dump *dump)
+static void dump_xen_console_ring()
 {
 	uint32_t  producer, consumer, ring_size;
 	vaddr_t   ring_address;
@@ -315,16 +316,16 @@ static void dump_xen_console_ring(struct dump *dump)
 		return;
 
 	}
-	ring_address = kdump_read_pointer_vaddr(dump, NULL, conring);
-	ring_size = kdump_read_uint32_vaddr(dump, NULL, conring_size);
-	producer = kdump_read_uint32_vaddr(dump, NULL, conringp);
-	consumer = kdump_read_uint32_vaddr(dump, NULL, conringc);
+	ring_address = kdump_read_pointer_vaddr(NULL, conring);
+	ring_size = kdump_read_uint32_vaddr(NULL, conring_size);
+	producer = kdump_read_uint32_vaddr(NULL, conringp);
+	consumer = kdump_read_uint32_vaddr(NULL, conringc);
 
 	/* XXX size hardcoded in xen too */
-	__dump_console_ring(output, dump, NULL, "  ", ring_address, ring_size, producer, consumer);
+	__dump_console_ring(output, NULL, "  ", ring_address, ring_size, producer, consumer);
 }
 
-static void dump_domain_console_ring(FILE *o, struct dump *dump, struct domain *d)
+static void dump_domain_console_ring(FILE *o, struct domain *d)
 {
 	struct symbol *log_start, *log_end, *log_buf, *__log_buf, *log_buf_len;
 	uint32_t len, producer, consumer;
@@ -357,11 +358,11 @@ static void dump_domain_console_ring(FILE *o, struct dump *dump, struct domain *
 	}
 
 	if ( d->is_32bit_pv )
-		ring = kdump_read_uint32_vaddr(dump, d, log_buf->address);
+		ring = kdump_read_uint32_vaddr(d, log_buf->address);
 	else
-		ring = kdump_read_uint64_vaddr(dump, d, log_buf->address);
-	producer = kdump_read_uint32_vaddr(dump, d, log_end->address);
-	len = kdump_read_uint32_vaddr(dump, d, log_buf_len->address);
+		ring = kdump_read_uint64_vaddr(d, log_buf->address);
+	producer = kdump_read_uint32_vaddr(d, log_end->address);
+	len = kdump_read_uint32_vaddr(d, log_buf_len->address);
 
 	/*
 	 * Obviously bogus values for ring and len have been observed
@@ -394,10 +395,10 @@ static void dump_domain_console_ring(FILE *o, struct dump *dump, struct domain *
 
 	consumer = producer > len ? producer - len : 0;
 
-	__dump_console_ring(o, dump, d, "\t", ring, len, producer, consumer);
+	__dump_console_ring(o, d, "\t", ring, len, producer, consumer);
 }
 
-static void __dump_domain(struct dump *dump, struct domain *d)
+static void __dump_domain(struct domain *d)
 {
 	struct cpu_state *vcpu;
 	FILE *o = NULL;
@@ -428,26 +429,26 @@ static void __dump_domain(struct dump *dump, struct domain *d)
 	for_each_vcpu(d, vcpu)
 	{
 		fprintf(o, "  VCPU%d", vcpu->nr);
-		kdump_print_cpu_state(o, dump, vcpu);
-		dump_cpu_stack(o, dump, vcpu);
+		kdump_print_cpu_state(o, vcpu);
+		dump_cpu_stack(o, vcpu);
 	}
 
 	for_each_guest_cpu(d, vcpu) {
 		if (vcpu->valid) {
 			fprintf(o, "  Guest CPU%d", vcpu->nr);
-			kdump_print_cpu_state(o, dump, vcpu);
-			dump_cpu_stack(o, dump, vcpu);
+			kdump_print_cpu_state(o, vcpu);
+			dump_cpu_stack(o, vcpu);
 		}
 	}
 
 	if (options.console_ring)
-		dump_domain_console_ring(o, dump, d);
+		dump_domain_console_ring(o, d);
 
 	if ( options.domain_list_separate )
 		fclose(o);
 }
 
-static void dump_domains(struct dump *dump, int which)
+static void dump_domains(int which)
 {
 	struct domain *d;
 
@@ -457,14 +458,14 @@ static void dump_domains(struct dump *dump, int which)
 		return;
 	}
 
-	for_each_domain(dump, d)
+	for_each_domain(d)
 	{
 		if (which == -1 || d->domid == which)
-			__dump_domain(dump, d);
+			__dump_domain(d);
 	}
 }
 
-static void dump_xen_memory_new(struct dump *dump, const char *file) {
+static void dump_xen_memory_new(const char *file) {
 	FILE *mem;
 	maddr_t addr;
 	size_t ret;
@@ -490,11 +491,11 @@ static void dump_xen_memory_new(struct dump *dump, const char *file) {
 		return;
 	}
 
-	elf_header_size = create_elf_header_xen(mem, dump, mr_first);
+	elf_header_size = create_elf_header_xen(mem, mr_first);
 
 	for (mr = mr_first; mr != NULL; mr = mr->next) {
 		for (addr = mr->mfn << PAGE_SHIFT; addr < (mr->mfn + mr->page_count) << PAGE_SHIFT; addr += PAGE_SIZE) {
-			ret = kdump_read_maddr(dump, addr, buf, PAGE_SIZE);
+			ret = kdump_read_maddr(addr, buf, PAGE_SIZE);
 			if (ret == 0) {
 				fprintf(debug, "error reading offset %"PRIxMADDR" in xen memory dump: %s\n", addr, strerror(errno));
 				goto out;
@@ -511,7 +512,7 @@ static void dump_xen_memory_new(struct dump *dump, const char *file) {
 	fclose(mem);
 }
 
-static void dump_xen_memory_old(struct dump *dump, const char *file)
+static void dump_xen_memory_old(const char *file)
 {
 	maddr_t addr;
 	unsigned char buf[PAGE_SIZE];
@@ -526,7 +527,7 @@ static void dump_xen_memory_old(struct dump *dump, const char *file)
 
 	fprintf(output, "Xen Physical Memory:\n");
 
-	if (kdump_heap_limits(dump, &start, &end))
+	if (kdump_heap_limits(&start, &end))
 	{
 		fprintf(output, "\tUnavailable, failed to determine heap limits.\n\n");
 		return;
@@ -556,11 +557,11 @@ static void dump_xen_memory_old(struct dump *dump, const char *file)
 	mr->page_count = (end - start) >> PAGE_SHIFT;
 	mr->vaddr = XEN_virt_start;
 
-	elf_header_size = create_elf_header_xen(mem, dump, mr);
+	elf_header_size = create_elf_header_xen(mem, mr);
 	offset = elf_header_size;
 
 	for (addr = start; addr < end; addr += PAGE_SIZE) {
-		ret = kdump_read_maddr(dump, addr, buf, PAGE_SIZE);
+		ret = kdump_read_maddr(addr, buf, PAGE_SIZE);
 		if (ret == 0)
 			continue;
 
@@ -575,17 +576,17 @@ static void dump_xen_memory_old(struct dump *dump, const char *file)
 	fclose(mem);
 }
 
-static void dump_xen_memory(struct dump *dump, const char *file)
+static void dump_xen_memory(const char *file)
 {
 	maddr_t start, end;
 	fprintf(debug, "dump_xen_memory()\n");
-	if (kdump_heap_limits(dump, &start, &end) == 0) {
-		dump_xen_memory_old(dump, file);
+	if (kdump_heap_limits(&start, &end) == 0) {
+		dump_xen_memory_old(file);
 		return;
 	}
 
 	if (dump->frame_table != 0) {
-		dump_xen_memory_new(dump, file);
+		dump_xen_memory_new(file);
 		return;
 	}
 
@@ -593,7 +594,7 @@ static void dump_xen_memory(struct dump *dump, const char *file)
 	return;
 }
 
-static void dump_domain_memory(struct dump *dump, struct domain *d, const char *file) {
+static void dump_domain_memory(struct domain *d, const char *file) {
 	maddr_t p2mll, p2ml, p2m;
 	pfn_t max_pfn, pfn, mfn;
 	maddr_t ma;
@@ -603,7 +604,7 @@ static void dump_domain_memory(struct dump *dump, struct domain *d, const char *
 	unsigned long *ptr;
 	int skip_page;
 
-	const int fpp = (PAGE_SIZE/kdump_sizeof_pfn(dump, d));
+	const int fpp = (PAGE_SIZE/kdump_sizeof_pfn(d));
 
 	fprintf(output, "Domain %d Pseudo-Physical Memory:\n", d->domid);
 
@@ -634,7 +635,7 @@ static void dump_domain_memory(struct dump *dump, struct domain *d, const char *
 		return;
 	}
 
-	create_elf_header_dom(mem, dump, d->domid);
+	create_elf_header_dom(mem, d->domid);
 
 	fprintf(output, "  Psuedo-physical address range: %016"PRIxPADDR"-%016"PRIxPADDR"\n",
 		(paddr_t)0, (paddr_t)(max_pfn << PAGE_SHIFT));
@@ -647,7 +648,7 @@ static void dump_domain_memory(struct dump *dump, struct domain *d, const char *
 		if((pfn % (fpp*fpp)) == 0)
 		{
 			ma = p2mll + (pfn/(fpp*fpp)*4);
-			p2ml = kdump_read_pfn_maddr(dump, d, ma) << PAGE_SHIFT;
+			p2ml = kdump_read_pfn_maddr(d, ma) << PAGE_SHIFT;
 			if (p2ml == 0)
 			{
 				fprintf(output, "  No P2M frame list for frames %"PRIxPFN"-%"PRIxPFN"\n",
@@ -662,7 +663,7 @@ static void dump_domain_memory(struct dump *dump, struct domain *d, const char *
 		if ((pfn % fpp) == 0)
 		{
 			ma = p2ml + (pfn/fpp*4);
-			p2m = kdump_read_pfn_maddr(dump, d, ma) << PAGE_SHIFT;
+			p2m = kdump_read_pfn_maddr(d, ma) << PAGE_SHIFT;
 			if (p2m == 0)
 			{
 				fprintf(output, "    No P2M for frames %"PRIxPFN"-%"PRIxPFN"\n",
@@ -676,7 +677,7 @@ static void dump_domain_memory(struct dump *dump, struct domain *d, const char *
 		}
 		ma = p2m + (pfn%fpp)*4;
 
-		mfn = kdump_read_pfn_maddr(dump, d, ma);
+		mfn = kdump_read_pfn_maddr(d, ma);
 
 		//fprintf(output, "      P2M for frame %"PRIxPFN" is %"PRIxPFN" from %08"PRIxMADDR"\n",
 		//	pfn, mfn, ma);
@@ -698,7 +699,7 @@ static void dump_domain_memory(struct dump *dump, struct domain *d, const char *
 
 		//fprintf(output, "        Copy MA %"PRIxMADDR" to PA %"PRIxPFN"\n", ma, pa);
 		if (!skip_page) {
-			if (kdump_read_maddr(dump, ma, buf, PAGE_SIZE) != PAGE_SIZE) {
+			if (kdump_read_maddr(ma, buf, PAGE_SIZE) != PAGE_SIZE) {
 				fprintf(output, "Warning: failed to read machine addr %#"PRIxMADDR" for dom0\n", ma);
 				skip_page = 1;
 			}
@@ -740,13 +741,13 @@ static void dump_domain_memory(struct dump *dump, struct domain *d, const char *
 	fclose(mem);
 }
 
-void xen_m2p(struct dump *dump, struct domain *d, struct memory_extent *extents, int count) {
+void xen_m2p(struct domain *d, struct memory_extent *extents, int count) {
 	maddr_t p2mll, p2ml, p2m;
 	pfn_t max_pfn, pfn, mfn;
 	maddr_t ma;
 	int i;
 
-	const int fpp = (PAGE_SIZE / kdump_sizeof_pfn(dump, d));
+	const int fpp = (PAGE_SIZE / kdump_sizeof_pfn(d));
 
 	if (d->is_hvm) {
 		//fprintf(output, "  Cannot dump Pseudo-Physical address space of HVM domain\n");
@@ -769,7 +770,7 @@ void xen_m2p(struct dump *dump, struct domain *d, struct memory_extent *extents,
 	for (pfn = 0; pfn < max_pfn; pfn++) {
 		if ((pfn % (fpp * fpp)) == 0) {
 			ma = p2mll + (pfn / (fpp * fpp) * 4);
-			p2ml = kdump_read_pfn_maddr(dump, d, ma) << PAGE_SHIFT;
+			p2ml = kdump_read_pfn_maddr(d, ma) << PAGE_SHIFT;
 			if (p2ml == 0) {
 				//fprintf(output, "  No P2M frame list for frames %"PRIxPFN"-%"PRIxPFN"\n",
 				//	pfn, pfn+(fpp*fpp));
@@ -782,7 +783,7 @@ void xen_m2p(struct dump *dump, struct domain *d, struct memory_extent *extents,
 		}
 		if ((pfn % fpp) == 0) {
 			ma = p2ml + (pfn / fpp * 4);
-			p2m = kdump_read_pfn_maddr(dump, d, ma) << PAGE_SHIFT;
+			p2m = kdump_read_pfn_maddr(d, ma) << PAGE_SHIFT;
 			if (p2m == 0) {
 				//fprintf(output, "    No P2M for frames %"PRIxPFN"-%"PRIxPFN"\n",
 				//	pfn, pfn+fpp);
@@ -795,7 +796,7 @@ void xen_m2p(struct dump *dump, struct domain *d, struct memory_extent *extents,
 		}
 		ma = p2m + (pfn % fpp) * 4;
 
-		mfn = kdump_read_pfn_maddr(dump, d, ma);
+		mfn = kdump_read_pfn_maddr(d, ma);
 
 		//fprintf(output, "      P2M for frame %"PRIxPFN" is %"PRIxPFN" from %08"PRIxMADDR"\n",
 		//	pfn, mfn, ma);
@@ -864,7 +865,6 @@ int main(int argc, char **argv)
 	struct symbol_table *xen_symtab = NULL;
 
 	const char *fn = "/proc/vmcore";
-	struct dump *dump;
 
 	while ((ch = getopt_long(argc, argv, sopts, lopts, NULL)) != -1) {
 		switch(ch) {
@@ -1090,7 +1090,7 @@ int main(int argc, char **argv)
 	}
 
 
-	dump = open_dump(fn, xen_symtab, nr_symtab_files, symtab_files);
+	open_dump(fn, xen_symtab, nr_symtab_files, symtab_files);
 
 	fprintf(output, "Read crash dump from %s\n", fn);
 	fprintf(output, "\n");
@@ -1110,19 +1110,19 @@ int main(int argc, char **argv)
 		dump_xen_console_ring(dump);
 
 	if (options.xen_memory_dump)
-		dump_xen_memory(dump, options.xen_memory_dump);
+		dump_xen_memory(options.xen_memory_dump);
 	if (options.dom0_memory_dump)
-		dump_domain_memory(dump, &dump->domains[0], options.dom0_memory_dump);
+		dump_domain_memory(&dump->domains[0], options.dom0_memory_dump);
 
 	switch (options.domain_list)
 	{
 	case DOMAIN_LIST_NONE:
 		break;
 	case DOMAIN_LIST_DOM0:
-		dump_domains(dump, 0);
+		dump_domains(0);
 		break;
 	case DOMAIN_LIST_ALL:
-		dump_domains(dump, -1);
+		dump_domains(-1);
 		break;
 	}
 

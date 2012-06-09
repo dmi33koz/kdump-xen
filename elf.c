@@ -195,7 +195,7 @@ static void __init_elf_header(Elf64_Ehdr *h) {
 }
 
 /* Allocate `dump->cpus' to handle `nr' cpus. */
-static int allocate_cpus(struct dump *dump, int nr)
+static int allocate_cpus(int nr)
 {
 	void *tmp;
 
@@ -222,12 +222,12 @@ static int allocate_cpus(struct dump *dump, int nr)
  */
 static struct cpu_state current_cpu;
 
-static int parse_note_CORE(struct dump *dump, off64_t offset, Elf_Nhdr *note)
+static int parse_note_CORE(off64_t offset, Elf_Nhdr *note)
 {
 	switch (note->n_type) {
 	case NT_PRSTATUS: {
 		memset(&current_cpu, 0, sizeof(current_cpu));
-		if (kdump_parse_prstatus(dump, ELFNOTE_DESC(note), &current_cpu))
+		if (kdump_parse_prstatus(ELFNOTE_DESC(note), &current_cpu))
 			return 1;
 
 		//fprintf(debug, "CORE PR_STATUS\n");
@@ -243,20 +243,20 @@ static int parse_note_CORE(struct dump *dump, off64_t offset, Elf_Nhdr *note)
 }
 
 /* Obsolete */
-static int parse_note_XEN_CORE(struct dump *dump, off64_t offset, Elf_Nhdr *note)
+static int parse_note_XEN_CORE(off64_t offset, Elf_Nhdr *note)
 {
 	fprintf(debug, "unhandled \"XEN CORE\" note type %x\n", note->n_type);
 	return 1;
 }
 
 // read crash_note from vaddr and set current_cpu to the state
-int parse_crash_note(struct dump *dump, struct domain *d, vaddr_t note_p, struct cpu_state *guest_cpu) {
+int parse_crash_note(struct domain *d, vaddr_t note_p, struct cpu_state *guest_cpu) {
 	Elf_Nhdr *note = NULL;
 	int size = 0;
 	note = malloc(sizeof(*note));
 
 	// first find out total note size
-	if (kdump_read_vaddr(dump, d, note_p, (void*) note, sizeof(*note)) != sizeof(*note))
+	if (kdump_read_vaddr(d, note_p, (void*) note, sizeof(*note)) != sizeof(*note))
 		goto err;
 
 	if (note->n_type != NT_PRSTATUS || !ELFNOTE_NAMESZ(note) || !ELFNOTE_DESCSZ(note))
@@ -266,14 +266,14 @@ int parse_crash_note(struct dump *dump, struct domain *d, vaddr_t note_p, struct
 	note = realloc(note, size);
 
 	// then read whole note
-	if (kdump_read_vaddr(dump, d, note_p, note, size) != size)
+	if (kdump_read_vaddr(d, note_p, note, size) != size)
 		goto err;
 
 	//hex_dump(0, note, size);
 	if (strncmp("CORE", ELFNOTE_NAME(note), ELFNOTE_NAMESZ(note)) != 0)
 		goto err;
 
-	if (parse_note_CORE(dump, 0, note))
+	if (parse_note_CORE(0, note))
 		goto err;
 
 	memcpy(guest_cpu, &current_cpu, sizeof(current_cpu));
@@ -287,7 +287,7 @@ err:
 	return 1;
 }
 
-static int parse_note_Xen(struct dump *dump, off64_t offset, Elf_Nhdr *note)
+static int parse_note_Xen(off64_t offset, Elf_Nhdr *note)
 {
 
 	switch (note->n_type) {
@@ -295,7 +295,7 @@ static int parse_note_Xen(struct dump *dump, off64_t offset, Elf_Nhdr *note)
 
 		//fprintf(debug, "Xen ELFNOTE_CRASH_INFO\n");
 
-		if (kdump_parse_hypervisor(dump, ELFNOTE_DESC(note)))
+		if (kdump_parse_hypervisor(ELFNOTE_DESC(note)))
 		{
 			fprintf(debug, "failed to parse hypervisor note\n");
 			return 1;
@@ -306,12 +306,12 @@ static int parse_note_Xen(struct dump *dump, off64_t offset, Elf_Nhdr *note)
 		if (current_cpu.flags == 0)
 			return 1;
 
-		if (kdump_parse_crash_regs(dump, ELFNOTE_DESC(note), &current_cpu))
+		if (kdump_parse_crash_regs(ELFNOTE_DESC(note), &current_cpu))
 			return 1;
 
 		//fprintf(debug, "Xen ELFNOTE_CRASH_REGS for CPU%d\n", current_cpu.nr);
 
-		if (allocate_cpus(dump,current_cpu.nr+1))
+		if (allocate_cpus(current_cpu.nr+1))
 			return 1;
 
 		memcpy(&dump->cpus[current_cpu.nr], &current_cpu, sizeof(current_cpu));
@@ -365,7 +365,7 @@ static int note_get_symbol(char *text, char * name, uint64_t * val) {
 	return 0;
 }
 
-static int parse_note_VMCOREINFO(struct dump *dump, off64_t offset, Elf_Nhdr *note)
+static int parse_note_VMCOREINFO(off64_t offset, Elf_Nhdr *note)
 {
 	char * text;
 
@@ -380,7 +380,7 @@ static int parse_note_VMCOREINFO(struct dump *dump, off64_t offset, Elf_Nhdr *no
 	return 0;
 }
 
-static int parse_note_VMCOREINFO_XEN(struct dump *dump, off64_t offset, Elf_Nhdr *note)
+static int parse_note_VMCOREINFO_XEN(off64_t offset, Elf_Nhdr *note)
 {
 	char * text;
    uint64_t val;
@@ -420,7 +420,7 @@ static int parse_note_VMCOREINFO_XEN(struct dump *dump, off64_t offset, Elf_Nhdr
 
 static struct note_handler {
 	const char *name;
-	int (*handler)(struct dump *dump, off64_t offset, Elf_Nhdr *note);
+	int (*handler)(off64_t offset, Elf_Nhdr *note);
 } note_handlers[] = {
 	{ .name = "CORE", .handler = parse_note_CORE },
 	{ .name = "XEN CORE", .handler = parse_note_XEN_CORE },
@@ -430,7 +430,7 @@ static struct note_handler {
 };
 #define NR_NOTE_HANDLERS (sizeof(note_handlers)/sizeof(note_handlers[0]))
 
-static int parse_pt_note(struct dump *dump, Elf64_Phdr *phdr)
+static int parse_pt_note(Elf64_Phdr *phdr)
 {
 	off64_t offset = phdr->p_offset;
 	Elf_Nhdr *note;
@@ -439,7 +439,7 @@ static int parse_pt_note(struct dump *dump, Elf64_Phdr *phdr)
 	int i, n;
 	phdr_info_t *p_info;
 
-	if (kdump_read(dump, notes,  phdr->p_offset, phdr->p_filesz) != phdr->p_filesz)
+	if (kdump_read(notes,  phdr->p_offset, phdr->p_filesz) != phdr->p_filesz)
 	{
 		fprintf(debug, "failed to read PT_NOTE: %s\n", strerror(errno));
 		return 1;
@@ -454,7 +454,7 @@ static int parse_pt_note(struct dump *dump, Elf64_Phdr *phdr)
 		for(i=0; i<NR_NOTE_HANDLERS;i++) {
 			handler = &note_handlers[i];
 			if (strncmp(handler->name, ELFNOTE_NAME(note), note->n_namesz)==0) {
-				if (handler->handler(dump, offset, note)) {
+				if (handler->handler(offset, note)) {
 					fprintf(debug, "failed to handle note %s\n", ELFNOTE_NAME(note));
 				}
 				break;
@@ -473,7 +473,7 @@ static int parse_pt_note(struct dump *dump, Elf64_Phdr *phdr)
 	return 0;
 }
 
-static int parse_pt_load(struct dump *dump, Elf64_Phdr *phdr)
+static int parse_pt_load(Elf64_Phdr *phdr)
 {
 	void *mem;
 	struct memory_extent *mext;
@@ -495,16 +495,15 @@ static int parse_pt_load(struct dump *dump, Elf64_Phdr *phdr)
 	return 0;
 }
 
-static int foreach_phdr_type(struct dump *dump,
-			     Elf64_Ehdr *ehdr, Elf_Word p_type,
-			     int (*callback)(struct dump *dump, Elf64_Phdr *phdr))
+static int foreach_phdr_type(Elf64_Ehdr *ehdr, Elf_Word p_type,
+			     int (*callback)(Elf64_Phdr *phdr))
 {
 	int i;
 
 	for (i=0; i<ehdr->e_phnum; i++) {
 		Elf64_Phdr phdr;
 
-		if (kdump_read(dump, &phdr, ehdr->e_phoff + (i*sizeof(phdr)), sizeof(phdr)) != sizeof(phdr))
+		if (kdump_read(&phdr, ehdr->e_phoff + (i*sizeof(phdr)), sizeof(phdr)) != sizeof(phdr))
 		{
 			fprintf(debug, "failed to read program header %d: %s\n",
 				i, strerror(errno));
@@ -512,7 +511,7 @@ static int foreach_phdr_type(struct dump *dump,
 		}
 		if (phdr.p_type == p_type) {
 		   fprintf(debug, "parse Phdr entry %d of type 0x%x\n", i, phdr.p_type);
-			if ((*callback)(dump, &phdr)) {
+			if ((*callback)(&phdr)) {
 				fprintf(debug, "Error: failed to parse pt entry %d of type 0x%x\n", i,
 						phdr.p_type);
 			}
@@ -521,7 +520,7 @@ static int foreach_phdr_type(struct dump *dump,
 	return 0;
 }
 
-int create_elf_header_xen(FILE *f, struct dump *dump, mem_range_t * mr_first) {
+int create_elf_header_xen(FILE *f, mem_range_t * mr_first) {
 	phdr_info_t *p_info;
 	mem_range_t * mr = mr_first;
 
@@ -542,7 +541,7 @@ int create_elf_header_xen(FILE *f, struct dump *dump, mem_range_t * mr_first) {
 	return ftell(f);
 }
 
-int create_elf_header_dom(FILE *f, struct dump *dump, int dom_id) {
+int create_elf_header_dom(FILE *f, int dom_id) {
 	struct elf_all all;
 	// NOTE! elf header is always 64 bit type even for 32 bit platform
 	// but e_machine is different for 32/64
@@ -599,7 +598,7 @@ int create_elf_header_dom(FILE *f, struct dump *dump, int dom_id) {
 	p_info->phdr.p_memsz = p_info->phdr.p_filesz;
 	p_info->phdr.p_align = PAGE_SIZE;
 
-	vmalloc_count = x86_32_get_vmalloc_extents(dump, d, vcpu, &vmalloc_extents);
+	vmalloc_count = x86_32_get_vmalloc_extents(d, vcpu, &vmalloc_extents);
 	for (n = 0; n < vmalloc_count; n++) {
 		p_info = __add_phdr_info(&all, PT_LOAD, PF_R | PF_W | PF_X);
 		p_info->phdr.p_vaddr = (vmalloc_extents + n)->vaddr;
@@ -613,7 +612,7 @@ int create_elf_header_dom(FILE *f, struct dump *dump, int dom_id) {
 	return ftell(f);
 }
 
-int parse_dump(struct dump *dump)
+int parse_dump()
 {
 	extern struct arch arch_x86_32;
 	extern struct arch arch_x86_64;
@@ -622,7 +621,7 @@ int parse_dump(struct dump *dump)
 
 	memset(&elfall, '\0', sizeof(elfall));
 
-	if (kdump_read(dump, &ehdr, 0, sizeof(ehdr)) != sizeof(ehdr))
+	if (kdump_read(&ehdr, 0, sizeof(ehdr)) != sizeof(ehdr))
 	{
 		fprintf(debug, "failed to read dump elf header: %s\n", strerror(errno));
 		return 1;
@@ -652,10 +651,10 @@ int parse_dump(struct dump *dump)
 	 * Parse PT_LOAD first to populate memory map which is used
 	 * when parsing the CPU notes.
 	 */
-	if (foreach_phdr_type(dump, &ehdr, PT_LOAD, &parse_pt_load))
+	if (foreach_phdr_type(&ehdr, PT_LOAD, &parse_pt_load))
 		return 1;
 
-	if (foreach_phdr_type(dump, &ehdr, PT_NOTE, &parse_pt_note))
+	if (foreach_phdr_type(&ehdr, PT_NOTE, &parse_pt_note))
 		return 1;
 
 	return 0;

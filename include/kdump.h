@@ -13,6 +13,7 @@
 
 struct dump;
 struct domain;
+extern struct dump *dump;
 
 struct cpu_state {
 	unsigned long flags;
@@ -98,39 +99,39 @@ struct arch {
 	int sizeof_percpu;
 
 	/* Return the limits of the Xen heap. */
-	int (*heap_limits)(struct dump *dump, maddr_t *s, maddr_t *e);
+	int (*heap_limits)(maddr_t *s, maddr_t *e);
 
 	/* Parse Hypervisor state... */
 	/* ...XEN_ELFNOTE_CRASH_INFO. */
-	int (*parse_hypervisor)(struct dump *dump, void *note);
+	int (*parse_hypervisor)(void *note);
 
 	/* Parse Physical CPU state... */
 	/* ...NT_PRSTATUS ELF note `prs' and populate `cpu'. */
-	int (*parse_prstatus)(struct dump *dump, void *prs, struct cpu_state *cpu);
+	int (*parse_prstatus)(void *prs, struct cpu_state *cpu);
 	/* ...XEN_ELFNOTE_CRASH_REGS note `cr' and populate `cpu'. */
-	int (*parse_crash_regs)(struct dump *dump, void *cr, struct cpu_state *cpu);
+	int (*parse_crash_regs)(void *cr, struct cpu_state *cpu);
 
 	/* Parse Virtual CPU state... */
 	/* ...struct vcpu_info. */
-	int (*parse_vcpu)(struct dump *dump, struct cpu_state *cpu, vaddr_t vcpu_info);
+	int (*parse_vcpu)(struct cpu_state *cpu, vaddr_t vcpu_info);
 
 	/* Print state of `cpu' to global variable `output'. */
-	int (*print_cpu_state)(FILE *o, struct dump *dump, struct cpu_state *cpu);
+	int (*print_cpu_state)(FILE *o, struct cpu_state *cpu);
 
 	/* Return virtual address of stack on `cpu'. */
-	vaddr_t (*stack)(struct dump *dump, struct cpu_state *cpu);
+	vaddr_t (*stack)(struct cpu_state *cpu);
 
 	/* Return virtual address of instruction pointer on `cpu'. */
-	vaddr_t (*instruction_pointer)(struct dump *dump, struct cpu_state *cpu);
+	vaddr_t (*instruction_pointer)(struct cpu_state *cpu);
 
 	/* Translate virtual address `virt' into a machine address
 	 * using current page tables of `cpu'. Returns -1 if this
 	 * isn't possible.
 	 */
-	maddr_t (*virt_to_mach)(struct dump *dump, struct cpu_state *cpu, vaddr_t virt);
+	maddr_t (*virt_to_mach)(struct cpu_state *cpu, vaddr_t virt);
 	/* Creates elf header for xen meory dump
 	 */
-	int (*create_elf_header_xen)(FILE *f, struct dump *dump, mem_range_t * mr_first);
+	int (*create_elf_header_xen)(FILE *f, mem_range_t * mr_first);
 
 };
 
@@ -195,14 +196,14 @@ struct dump {
 #define PAGE_SHIFT 12
 #define PAGE_SIZE (1<<PAGE_SHIFT)
 
-extern struct dump *open_dump(const char *fn, struct symbol_table *symtab,
+extern void open_dump(const char *fn, struct symbol_table *symtab,
 			      int nr_symtabs, const char **symtabs);
-extern void close_dump(struct dump *dump);
-extern size_t kdump_read(struct dump *dump, void *buf, off64_t offset, size_t length);
+extern void close_dump();
+extern size_t kdump_read(void *buf, off64_t offset, size_t length);
 
 extern FILE *debug, *output;
 
-static inline int kdump_cpu_is_32bit_pv(struct dump *dump, struct cpu_state *cpu)
+static inline int kdump_cpu_is_32bit_pv(struct cpu_state *cpu)
 {
 	if (cpu->flags & CPU_PHYSICAL)
 		return 0;
@@ -210,9 +211,9 @@ static inline int kdump_cpu_is_32bit_pv(struct dump *dump, struct cpu_state *cpu
 	return cpu->virtual.domain->is_32bit_pv;
 }
 
-static inline vaddr_t kdump_parse_prstatus(struct dump *dump, void *prs, struct cpu_state *cpu)
+static inline vaddr_t kdump_parse_prstatus(void *prs, struct cpu_state *cpu)
 {
-	return dump->_arch->parse_prstatus(dump, prs, cpu);
+	return dump->_arch->parse_prstatus(prs, cpu);
 }
 
 static inline vaddr_t kdump_set_prstatus(struct domain *d, void *prs, struct cpu_state *cpu)
@@ -225,73 +226,73 @@ static inline vaddr_t kdump_set_prstatus(struct domain *d, void *prs, struct cpu
 		return x86_64_set_prstatus(d, prs, cpu);
 	}
 }
-extern int x86_32_get_vmalloc_extents(struct dump *dump, struct domain *d, struct cpu_state *cpu, struct memory_extent ** extents);
+extern int x86_32_get_vmalloc_extents(struct domain *d, struct cpu_state *cpu, struct memory_extent ** extents);
 
-static inline vaddr_t kdump_parse_crash_regs(struct dump *dump, void *note, struct cpu_state *cpu)
+static inline vaddr_t kdump_parse_crash_regs(void *note, struct cpu_state *cpu)
 {
-	return dump->_arch->parse_crash_regs(dump, note, cpu);
+	return dump->_arch->parse_crash_regs(note, cpu);
 }
-static inline vaddr_t kdump_parse_hypervisor(struct dump *dump, void *note)
+static inline vaddr_t kdump_parse_hypervisor(void *note)
 {
-	return dump->_arch->parse_hypervisor(dump, note);
+	return dump->_arch->parse_hypervisor(note);
 }
-static inline vaddr_t kdump_parse_vcpu(struct dump *dump, struct cpu_state *cpu, vaddr_t vcpu_info)
+static inline vaddr_t kdump_parse_vcpu(struct cpu_state *cpu, vaddr_t vcpu_info)
 {
-	return dump->_arch->parse_vcpu(dump, cpu, vcpu_info);
+	return dump->_arch->parse_vcpu(cpu, vcpu_info);
 }
 
-extern int x86_32_parse_guest_cpus(struct dump *dump, struct domain *d);
-extern int x86_64_parse_guest_cpus(struct dump *dump, struct domain *d);
+extern int x86_32_parse_guest_cpus(struct domain *d);
+extern int x86_64_parse_guest_cpus(struct domain *d);
 
-static inline vaddr_t kdump_parse_guest_cpus(struct dump *dump, struct domain *d)
+static inline vaddr_t kdump_parse_guest_cpus(struct domain *d)
 {
 	if(d->has_32bit_shinfo && dump->compat_arch) {
-		return x86_32_parse_guest_cpus(dump, d);
+		return x86_32_parse_guest_cpus(d);
 	} else {
-		return x86_64_parse_guest_cpus(dump, d);
+		return x86_64_parse_guest_cpus(d);
 	}
 }
 
-static inline vaddr_t kdump_stack(struct dump *dump, struct cpu_state *cpu)
+static inline vaddr_t kdump_stack(struct cpu_state *cpu)
 {
-	return dump->_arch->stack(dump, cpu);
+	return dump->_arch->stack(cpu);
 }
-static inline vaddr_t kdump_instruction_pointer(struct dump *dump, struct cpu_state *cpu)
+static inline vaddr_t kdump_instruction_pointer(struct cpu_state *cpu)
 {
-	return dump->_arch->instruction_pointer(dump, cpu);
+	return dump->_arch->instruction_pointer(cpu);
 }
-static inline vaddr_t kdump_print_cpu_state(FILE *o, struct dump *dump, struct cpu_state *cpu)
+static inline vaddr_t kdump_print_cpu_state(FILE *o, struct cpu_state *cpu)
 {
 	if (cpu->bitnes == 32) {
-		return dump->compat_arch->print_cpu_state(o, dump, cpu);
+		return dump->compat_arch->print_cpu_state(o, cpu);
 	} else {
-		return dump->_arch->print_cpu_state(o, dump, cpu);
+		return dump->_arch->print_cpu_state(o, cpu);
 	}
 }
-static inline 	maddr_t kdump_virt_to_mach(struct dump *dump, struct cpu_state *cpu, vaddr_t virt)
+static inline 	maddr_t kdump_virt_to_mach(struct cpu_state *cpu, vaddr_t virt)
 {
-	return dump->_arch->virt_to_mach(dump, cpu, virt);
+	return dump->_arch->virt_to_mach(cpu, virt);
 }
-static inline int kdump_sizeof_pointer(struct dump *dump)
+static inline int kdump_sizeof_pointer()
 {
 	return dump->_arch->sizeof_pointer;
 }
-static inline int kdump_sizeof_compat_pointer(struct dump *dump)
+static inline int kdump_sizeof_compat_pointer()
 {
 	if (dump->compat_arch)
 		return dump->compat_arch->sizeof_pointer;
 	else
 		return dump->_arch->sizeof_pointer;
 }
-static inline int kdump_sizeof_cpu_pointer(struct dump *dump, struct cpu_state *cpu)
+static inline int kdump_sizeof_cpu_pointer(struct cpu_state *cpu)
 {
-	if (kdump_cpu_is_32bit_pv(dump, cpu))
+	if (kdump_cpu_is_32bit_pv(cpu))
 		return kdump_sizeof_compat_pointer(dump);
 	else
 		return kdump_sizeof_pointer(dump);
 }
 
-static inline int kdump_sizeof_pfn(struct dump *dump, struct domain *d)
+static inline int kdump_sizeof_pfn(struct domain *d)
 {
 	if(d->has_32bit_shinfo && dump->compat_arch) {
 		return dump->compat_arch->sizeof_pfn;
@@ -299,15 +300,15 @@ static inline int kdump_sizeof_pfn(struct dump *dump, struct domain *d)
 		return dump->_arch->sizeof_pfn;
 	}
 }
-static inline int kdump_sizeof_percpu(struct dump *dump)
+static inline int kdump_sizeof_percpu()
 {
 	return dump->_arch->sizeof_percpu;
 }
-static inline int kdump_heap_limits(struct dump *dump, maddr_t *s, maddr_t *e)
+static inline int kdump_heap_limits(maddr_t *s, maddr_t *e)
 {
-	return dump->_arch->heap_limits(dump, s, e);
+	return dump->_arch->heap_limits(s, e);
 }
-static inline struct symbol_table *kdump_symtab_for_cpu(struct dump *dump, struct cpu_state *cpu)
+static inline struct symbol_table *kdump_symtab_for_cpu(struct cpu_state *cpu)
 {
 	if (cpu->flags & CPU_PHYSICAL)
 		return dump->symtab;
@@ -315,13 +316,13 @@ static inline struct symbol_table *kdump_symtab_for_cpu(struct dump *dump, struc
 		return cpu->virtual.domain->symtab;
 }
 
-#define for_each_pcpu(dump, cpu) \
+#define for_each_pcpu(cpu) \
 	for ((cpu) = &(dump)->cpus[0]; \
 	     (cpu) < &(dump)->cpus[(dump)->nr_cpus]; \
 	     (cpu)++)
 
-extern int parse_domain_list(struct dump *dump, int nr_symtabs, const char **symtabs);
-#define for_each_domain(dump, dom) \
+extern int parse_domain_list(int nr_symtabs, const char **symtabs);
+#define for_each_domain(dom) \
 	for ((dom) = &(dump)->domains[0]; \
 	     (dom) < &(dump)->domains[(dump)->nr_domains]; \
 	     (dom)++)
@@ -340,11 +341,11 @@ void free_domain(struct domain *domain);
 
 void hex_dump(int offset, void *ptr, int size);
 
-extern int create_elf_header_xen(FILE *f, struct dump *dump, mem_range_t * mr_first);
+extern int create_elf_header_xen(FILE *f, mem_range_t * mr_first);
 
-extern int create_elf_header_dom(FILE *f, struct dump *dump, int dom_id);
+extern int create_elf_header_dom(FILE *f, int dom_id);
 
 extern mem_range_t * alloc_mem_range(void);
 extern void free_mem_range(mem_range_t *mr_first);
-void xen_m2p(struct dump *dump, struct domain *d, struct memory_extent *extents, int count);
+void xen_m2p(struct domain *d, struct memory_extent *extents, int count);
 #endif

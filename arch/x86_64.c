@@ -105,7 +105,7 @@ static vaddr_t get_cpu_info(vaddr_t stack)
 	return cpu_info;
 }
 
-static int x86_64_heap_limits(struct dump *dump, maddr_t *start, maddr_t *end)
+static int x86_64_heap_limits(maddr_t *start, maddr_t *end)
 {
 	struct symbol *xenheap_phys_start, *xenheap_phys_end;
 
@@ -115,8 +115,8 @@ static int x86_64_heap_limits(struct dump *dump, maddr_t *start, maddr_t *end)
 	if ( xenheap_phys_start == NULL || xenheap_phys_end == NULL )
 		return 1;
 
-	*start = kdump_read_uint64_vaddr(dump, NULL, xenheap_phys_start->address);
-	*end = kdump_read_uint64_vaddr(dump, NULL, xenheap_phys_end->address);
+	*start = kdump_read_uint64_vaddr(NULL, xenheap_phys_start->address);
+	*end = kdump_read_uint64_vaddr(NULL, xenheap_phys_end->address);
 
 	if ( *start == 0 || *end == 0 )
 		return 1;
@@ -124,7 +124,7 @@ static int x86_64_heap_limits(struct dump *dump, maddr_t *start, maddr_t *end)
 	return 0;
 }
 
-static int x86_64_parse_prstatus(struct dump *dump, void *_prs, struct cpu_state *cpu)
+static int x86_64_parse_prstatus(void *_prs, struct cpu_state *cpu)
 {
 	ELF_Prstatus *prs = _prs;
 
@@ -165,7 +165,7 @@ int x86_64_set_prstatus(struct domain *d, void *_prs, struct cpu_state *cpu)
 	return 0;
 }
 
-static int x86_64_parse_crash_regs(struct dump *dump, void *_cr, struct cpu_state *cpu)
+static int x86_64_parse_crash_regs(void *_cr, struct cpu_state *cpu)
 {
 	crash_xen_core_t *cr = _cr;
 	maddr_t current;
@@ -184,9 +184,9 @@ static int x86_64_parse_crash_regs(struct dump *dump, void *_cr, struct cpu_stat
 		current = get_cpu_info(cpu->x86_regs.rsp);
 		/* current now points to the cpu_info struct */
 
-		cpu->nr = kdump_read_uint32_vaddr_cpu(dump, cpu, current+CPUINFO_processor_id);
+		cpu->nr = kdump_read_uint32_vaddr_cpu(cpu, current+CPUINFO_processor_id);
 		cpu->physical.v_current =
-			kdump_read_pointer_vaddr_cpu(dump, cpu, current+CPUINFO_current_vcpu);
+			kdump_read_pointer_vaddr_cpu(cpu, current+CPUINFO_current_vcpu);
 
 		if (symtab_lookup_address(dump->symtab, cpu->x86_regs.rip) == __context_switch_symbol)
 			cpu->flags |= CPU_CONTEXT_SWITCH;
@@ -197,11 +197,11 @@ static int x86_64_parse_crash_regs(struct dump *dump, void *_cr, struct cpu_stat
 	return 0;
 }
 
-int x86_64_parse_guest_cpus(struct dump *dump, struct domain *d) {
+int x86_64_parse_guest_cpus(struct domain *d) {
 	return -1;
 }
 
-static int x86_64_parse_vcpu(struct dump *dump, struct cpu_state *cpu, vaddr_t vcpu_info)
+static int x86_64_parse_vcpu(struct cpu_state *cpu, vaddr_t vcpu_info)
 {
 	unsigned char vcpu[VCPU_sizeof];
 	struct cpu_user_regs_x86_64 user_regs;
@@ -213,7 +213,7 @@ static int x86_64_parse_vcpu(struct dump *dump, struct cpu_state *cpu, vaddr_t v
 	cpu->flags &= ~CPU_PHYSICAL;
 	cpu->flags |= CPU_CORE_STATE;
 
-	if (kdump_read_vaddr(dump, NULL, vcpu_info, vcpu, VCPU_sizeof) != VCPU_sizeof)
+	if (kdump_read_vaddr(NULL, vcpu_info, vcpu, VCPU_sizeof) != VCPU_sizeof)
 	{
 		fprintf(stderr, "failed to read VCPU state\n");
 		return 1;
@@ -248,7 +248,7 @@ static int x86_64_parse_vcpu(struct dump *dump, struct cpu_state *cpu, vaddr_t v
 		if (pcpu->physical.v_current == vcpu_info)
 			cpu->flags |= CPU_RUNNING;
 
-		if (kdump_read_vaddr_cpu(dump, pcpu,
+		if (kdump_read_vaddr_cpu(pcpu,
 					 get_cpu_info(pcpu->x86_regs.rsp),
 					 &user_regs, sizeof(struct cpu_user_regs_x86_64))
 		    != sizeof(struct cpu_user_regs_x86_64))
@@ -307,7 +307,7 @@ static int x86_64_parse_vcpu(struct dump *dump, struct cpu_state *cpu, vaddr_t v
 	return 0;
 }
 
-static int x86_64_parse_hypervisor(struct dump *dump, void *note)
+static int x86_64_parse_hypervisor(void *note)
 {
 	xen_crash_xen_regs_t *x = note;
 
@@ -316,21 +316,21 @@ static int x86_64_parse_hypervisor(struct dump *dump, void *note)
 	dump->tainted = x->tainted;
 
 	if (x->xen_extra_version)
-		dump->xen_extra_version = kdump_read_string_maddr(dump, x->xen_extra_version);
+		dump->xen_extra_version = kdump_read_string_maddr(x->xen_extra_version);
 	if (x->xen_changeset)
-		dump->xen_changeset     = kdump_read_string_maddr(dump, x->xen_changeset);
+		dump->xen_changeset     = kdump_read_string_maddr(x->xen_changeset);
 	if (x->xen_compiler)
-		dump->xen_compiler      = kdump_read_string_maddr(dump, x->xen_compiler);
+		dump->xen_compiler      = kdump_read_string_maddr(x->xen_compiler);
 	if (x->xen_compile_date)
-		dump->xen_compile_date  = kdump_read_string_maddr(dump, x->xen_compile_date);
+		dump->xen_compile_date  = kdump_read_string_maddr(x->xen_compile_date);
 	if (x->xen_compile_time)
-		dump->xen_compile_time  = kdump_read_string_maddr(dump, x->xen_compile_time);
+		dump->xen_compile_time  = kdump_read_string_maddr(x->xen_compile_time);
 
 	return 0;
 
 }
 
-static int x86_64_print_cpu_state(FILE *o, struct dump *dump, struct cpu_state *cpu)
+static int x86_64_print_cpu_state(FILE *o, struct cpu_state *cpu)
 {
 	int len = 0;
 
@@ -449,16 +449,16 @@ static int x86_64_print_cpu_state(FILE *o, struct dump *dump, struct cpu_state *
 	return len;
 }
 
-static vaddr_t x86_64_stack(struct dump *dump, struct cpu_state *cpu)
+static vaddr_t x86_64_stack(struct cpu_state *cpu)
 {
 	return cpu->x86_regs.rsp;
 }
-static vaddr_t x86_64_instruction_pointer(struct dump *dump, struct cpu_state *cpu)
+static vaddr_t x86_64_instruction_pointer(struct cpu_state *cpu)
 {
 	return cpu->x86_regs.rip;
 }
 
-static maddr_t x86_64_virt_to_mach(struct dump *dump, struct cpu_state *cpu, uint64_t virt)
+static maddr_t x86_64_virt_to_mach(struct cpu_state *cpu, uint64_t virt)
 {
 	vaddr_t page_offset;
 
@@ -468,12 +468,12 @@ static maddr_t x86_64_virt_to_mach(struct dump *dump, struct cpu_state *cpu, uin
 		page_offset = 0xFFFF830000000000ULL;
 
 	if ((cpu->flags&CPU_EXTD_STATE) && cpu->x86_regs.cr[3]) {
-		extern int x86_virt_to_mach(struct dump *dump, uint64_t cr3,
+		extern int x86_virt_to_mach(uint64_t cr3,
 					    int paging_levels,
 					    vaddr_t virt, maddr_t *maddr);
 		maddr_t maddr;
 
-		if(x86_virt_to_mach(dump, cpu->x86_regs.cr[3], 4, virt, &maddr))
+		if(x86_virt_to_mach(cpu->x86_regs.cr[3], 4, virt, &maddr))
 			goto page_offset;
 
 		return maddr;

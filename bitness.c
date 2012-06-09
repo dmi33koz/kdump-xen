@@ -56,7 +56,7 @@ static vaddr_t xen__maddr_to_virt(maddr_t ma) {
 	return (vaddr_t) (XEN_virt_start + (ma - xen_phys_start));
 }
 
-static void bitness_init(struct dump *dump) {
+static void bitness_init() {
 	static int __init = 0;
 	struct symbol *sym;
 	if (__init) {
@@ -68,12 +68,12 @@ static void bitness_init(struct dump *dump) {
 	if (!sym) {
 		fprintf(debug, "Error Symbol not found xen_phys_start\n");
 	} else {
-		xen_phys_start = kdump_read_uint64_vaddr(dump, NULL, sym->address);
+		xen_phys_start = kdump_read_uint64_vaddr(NULL, sym->address);
 		fprintf(debug, "xen_phys_start = 0x%llx\n", xen_phys_start);
 	}
 }
 
-mem_range_t * FN(get_page_ranges_xen)(struct dump *dump) {
+mem_range_t * FN(get_page_ranges_xen)() {
 	char buffer[PAGE_SIZE];
 	char *text_state;
 	maddr_t frame_table;
@@ -100,7 +100,7 @@ mem_range_t * FN(get_page_ranges_xen)(struct dump *dump) {
 		fprintf(output, "\tSymbol not found max_page\n");
 		goto return_error;
 	}
-	max_page = kdump_read_uint64_vaddr(dump, NULL, sym->address);
+	max_page = kdump_read_uint64_vaddr(NULL, sym->address);
 	fprintf(debug, "max_page: %016"PRIxMADDR"\n", max_page);
 
 	// get mfn_start
@@ -110,7 +110,7 @@ mem_range_t * FN(get_page_ranges_xen)(struct dump *dump) {
 		goto return_error;
 	}
 
-	mfn_start = kdump_virt_to_mach(dump, &dump->cpus[0], sym->address) >> PAGE_SHIFT;
+	mfn_start = kdump_virt_to_mach(&dump->cpus[0], sym->address) >> PAGE_SHIFT;
 	fprintf(debug, "mfn_start: = %016"PRIxMADDR"\n", mfn_start);
 
 	// get mfn_end
@@ -119,18 +119,18 @@ mem_range_t * FN(get_page_ranges_xen)(struct dump *dump) {
 		fprintf(output, "\tSymbol not found _end\n");
 		goto return_error;
 	}
-	mfn_end = kdump_virt_to_mach(dump, &dump->cpus[0], sym->address) >> PAGE_SHIFT;
+	mfn_end = kdump_virt_to_mach(&dump->cpus[0], sym->address) >> PAGE_SHIFT;
 	fprintf(debug, "mfn_end = %#llx\n", mfn_end);
 
 	// frame table is defined as
 	// struct page_info *frame_table
-	frame_table = kdump_read_uint64_vaddr(dump, NULL, dump->frame_table);
+	frame_table = kdump_read_uint64_vaddr(NULL, dump->frame_table);
 	fprintf(debug, "frame_table = 0x%016" PRIx64 "\n", frame_table);
 
 	for (mfn = 0; mfn < max_page; mfn++) {
 		if ((mfn * dump->sizeof_page_info) % PAGE_SIZE == 0) {
 			buffer_shift = mfn * dump->sizeof_page_info;
-			if (kdump_read_vaddr(dump, NULL, frame_table + buffer_shift, buffer, PAGE_SIZE) != PAGE_SIZE) {
+			if (kdump_read_vaddr(NULL, frame_table + buffer_shift, buffer, PAGE_SIZE) != PAGE_SIZE) {
 				fprintf(output, "\tFailed to read frame_table\n");
 				goto return_error;
 			}
