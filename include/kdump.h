@@ -71,8 +71,11 @@ struct cpu_state {
 		uint16_t ds;
 		uint16_t fs;
 		uint16_t gs;
-		uint64_t cr[8];
 	} x86_regs;
+
+	struct {
+		uint64_t cr[8];
+	} x86_crs;
 };
 
 struct memory_extent {
@@ -147,7 +150,7 @@ struct domain {
 		pfn_t max_pfn;
 		maddr_t pfn_to_mfn_list_list;
 	} shared_info;
-
+	struct arch *_arch;
 	int nr_vcpus;
 	struct cpu_state *vcpus; // xen virtual cpu state
 	struct cpu_state *guest_cpus; // guest cpu state extracted from crash_notes
@@ -211,9 +214,9 @@ static inline int kdump_cpu_is_32bit_pv(struct cpu_state *cpu)
 	return cpu->virtual.domain->is_32bit_pv;
 }
 
-static inline vaddr_t kdump_parse_prstatus(void *prs, struct cpu_state *cpu)
+static inline vaddr_t kdump_parse_prstatus(struct arch* arch, void *prs, struct cpu_state *cpu)
 {
-	return dump->_arch->parse_prstatus(prs, cpu);
+	return arch->parse_prstatus(prs, cpu);
 }
 
 static inline vaddr_t kdump_set_prstatus(struct domain *d, void *prs, struct cpu_state *cpu)
@@ -228,9 +231,9 @@ static inline vaddr_t kdump_set_prstatus(struct domain *d, void *prs, struct cpu
 }
 extern int x86_32_get_vmalloc_extents(struct domain *d, struct cpu_state *cpu, struct memory_extent ** extents);
 
-static inline vaddr_t kdump_parse_crash_regs(void *note, struct cpu_state *cpu)
+static inline vaddr_t kdump_parse_crash_regs(struct arch *arch, void *note, struct cpu_state *cpu)
 {
-	return dump->_arch->parse_crash_regs(note, cpu);
+	return arch->parse_crash_regs(note, cpu);
 }
 static inline vaddr_t kdump_parse_hypervisor(void *note)
 {

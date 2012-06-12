@@ -320,10 +320,10 @@ static int x86_32_parse_crash_regs(void *_cr, struct cpu_state *cpu)
 
 	cpu->flags |= CPU_EXTD_STATE;
 
-	cpu->x86_regs.cr[0] = cr->cr0;
-	cpu->x86_regs.cr[2] = cr->cr2;
-	cpu->x86_regs.cr[3] = cr->cr3;
-	cpu->x86_regs.cr[4] = cr->cr4;
+	cpu->x86_crs.cr[0] = cr->cr0;
+	cpu->x86_crs.cr[2] = cr->cr2;
+	cpu->x86_crs.cr[3] = cr->cr3;
+	cpu->x86_crs.cr[4] = cr->cr4;
 
 	if (have_required_symbols)
 	{
@@ -397,7 +397,7 @@ static int x86_32_parse_vcpu(struct cpu_state *cpu, vaddr_t vcpu_info)
 
 		cpu->flags |= CPU_EXTD_STATE;
 		for(i=0; i<8; i++)
-			cpu->x86_regs.cr[i] = pcpu->x86_regs.cr[i];
+			cpu->x86_crs.cr[i] = pcpu->x86_crs.cr[i];
 	}
 	else
 	{
@@ -420,8 +420,8 @@ static int x86_32_parse_vcpu(struct cpu_state *cpu, vaddr_t vcpu_info)
 			cpu->flags |= CPU_CONTEXT_SWITCH;
 
 		cpu->flags |= CPU_EXTD_STATE;
-		//cpu->x86_regs.cr[3] = *(uint32_t*)&vcpu[VCPU_guest_table];
-		cpu->x86_regs.cr[3] = *(uint32_t*)&vcpu[VCPU_cr3];
+		//cpu->x86_crs.cr[3] = *(uint32_t*)&vcpu[VCPU_guest_table];
+		cpu->x86_crs.cr[3] = *(uint32_t*)&vcpu[VCPU_cr3];
 	}
 
 	cpu->x86_regs.eip = user_regs.eip;
@@ -492,7 +492,7 @@ static int x86_32_print_cpu_state(FILE *o, struct cpu_state *cpu)
 	if (cpu->flags & CPU_EXTD_STATE)
 	{
 		len += fprintf(o, "\tcr0: %08x   cr4: %08x   cr3: %08x   cr2: %08x\n",
-			       (uint32_t)cpu->x86_regs.cr[0], (uint32_t)cpu->x86_regs.cr[4], (uint32_t)cpu->x86_regs.cr[3], (uint32_t)cpu->x86_regs.cr[2]);
+			       (uint32_t)cpu->x86_crs.cr[0], (uint32_t)cpu->x86_crs.cr[4], (uint32_t)cpu->x86_crs.cr[3], (uint32_t)cpu->x86_crs.cr[2]);
 	}
 	if (cpu->flags & CPU_CORE_STATE)
 	{
@@ -601,21 +601,21 @@ static maddr_t x86_32_virt_to_mach(struct cpu_state *cpu, vaddr_t virt)
 	else
 		page_offset = 0xFF000000;
 
-	//int paging_levels = cpu->x86_regs.cr[4] & CR4_PAE ? 3 : 2;
+	//int paging_levels = cpu->x86_crs.cr[4] & CR4_PAE ? 3 : 2;
 	/* always use host paging level... */
-	int paging_levels = dump->cpus[0].x86_regs.cr[4] & CR4_PAE ? 3 : 2;
+	int paging_levels = dump->cpus[0].x86_crs.cr[4] & CR4_PAE ? 3 : 2;
 
 	fprintf(debug, "translate address %"PRIxVADDR" %x %lx %d\n",
-		virt, (uint32_t)cpu->x86_regs.cr[3], cpu->flags&CPU_EXTD_STATE,
-		(cpu->flags&CPU_EXTD_STATE) && (uint32_t)cpu->x86_regs.cr[3]);
+		virt, (uint32_t)cpu->x86_crs.cr[3], cpu->flags&CPU_EXTD_STATE,
+		(cpu->flags&CPU_EXTD_STATE) && (uint32_t)cpu->x86_crs.cr[3]);
 
-	if ((cpu->flags&CPU_EXTD_STATE) && cpu->x86_regs.cr[3]) {
+	if ((cpu->flags&CPU_EXTD_STATE) && cpu->x86_crs.cr[3]) {
 		extern int x86_virt_to_mach(uint64_t cr3,
 					    int paging_levels,
 					    vaddr_t virt, maddr_t *maddr);
 		maddr_t maddr;
 
-		if(x86_virt_to_mach(cpu->x86_regs.cr[3], paging_levels, virt, &maddr))
+		if(x86_virt_to_mach(cpu->x86_crs.cr[3], paging_levels, virt, &maddr))
 			goto page_offset;
 
 		return maddr;

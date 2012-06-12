@@ -172,10 +172,10 @@ static int x86_64_parse_crash_regs(void *_cr, struct cpu_state *cpu)
 
 	cpu->flags |= CPU_EXTD_STATE;
 	
-	cpu->x86_regs.cr[0] = cr->cr0;
-	cpu->x86_regs.cr[2] = cr->cr2;
-	cpu->x86_regs.cr[3] = cr->cr3;
-	cpu->x86_regs.cr[4] = cr->cr4;
+	cpu->x86_crs.cr[0] = cr->cr0;
+	cpu->x86_crs.cr[2] = cr->cr2;
+	cpu->x86_crs.cr[3] = cr->cr3;
+	cpu->x86_crs.cr[4] = cr->cr4;
 
 	if (have_required_symbols)
 	{
@@ -256,7 +256,7 @@ static int x86_64_parse_vcpu(struct cpu_state *cpu, vaddr_t vcpu_info)
 
 		cpu->flags |= CPU_EXTD_STATE;
 		for(i=0; i<8; i++)
-			cpu->x86_regs.cr[i] = pcpu->x86_regs.cr[i];
+			cpu->x86_crs.cr[i] = pcpu->x86_crs.cr[i];
 	}
 	else
 	{
@@ -279,7 +279,7 @@ static int x86_64_parse_vcpu(struct cpu_state *cpu, vaddr_t vcpu_info)
 			cpu->flags |= CPU_CONTEXT_SWITCH;
 
 		cpu->flags |= CPU_EXTD_STATE;
-		cpu->x86_regs.cr[3] = *(uint64_t*)&vcpu[VCPU_cr3];
+		cpu->x86_crs.cr[3] = *(uint64_t*)&vcpu[VCPU_cr3];
 	}
 
 	cpu->x86_regs.rip = user_regs.eip;
@@ -355,9 +355,9 @@ static int x86_64_print_cpu_state(FILE *o, struct cpu_state *cpu)
 	if (cpu->flags & CPU_EXTD_STATE)
 	{
 		len += fprintf(o, "\tcr0: %016"PRIx64"   cr4: %016"PRIx64"\n",
-			       cpu->x86_regs.cr[0], cpu->x86_regs.cr[4]);
+			       cpu->x86_crs.cr[0], cpu->x86_crs.cr[4]);
 		len += fprintf(o, "\tcr3: %016"PRIx64"   cr2: %016"PRIx64"\n",
-			       cpu->x86_regs.cr[3], cpu->x86_regs.cr[2]);
+			       cpu->x86_crs.cr[3], cpu->x86_crs.cr[2]);
 	}
 	if (cpu->flags & CPU_CORE_STATE)
 	{
@@ -467,13 +467,13 @@ static maddr_t x86_64_virt_to_mach(struct cpu_state *cpu, uint64_t virt)
 	else
 		page_offset = 0xFFFF830000000000ULL;
 
-	if ((cpu->flags&CPU_EXTD_STATE) && cpu->x86_regs.cr[3]) {
+	if ((cpu->flags&CPU_EXTD_STATE) && cpu->x86_crs.cr[3]) {
 		extern int x86_virt_to_mach(uint64_t cr3,
 					    int paging_levels,
 					    vaddr_t virt, maddr_t *maddr);
 		maddr_t maddr;
 
-		if(x86_virt_to_mach(cpu->x86_regs.cr[3], 4, virt, &maddr))
+		if(x86_virt_to_mach(cpu->x86_crs.cr[3], 4, virt, &maddr))
 			goto page_offset;
 
 		return maddr;

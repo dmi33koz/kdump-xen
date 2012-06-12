@@ -222,12 +222,12 @@ static int allocate_cpus(int nr)
  */
 static struct cpu_state current_cpu;
 
-static int parse_note_CORE(off64_t offset, Elf_Nhdr *note)
+static int parse_note_CORE(struct arch *arch, off64_t offset, Elf_Nhdr *note)
 {
 	switch (note->n_type) {
 	case NT_PRSTATUS: {
 		memset(&current_cpu, 0, sizeof(current_cpu));
-		if (kdump_parse_prstatus(ELFNOTE_DESC(note), &current_cpu))
+		if (kdump_parse_prstatus(arch, ELFNOTE_DESC(note), &current_cpu))
 			return 1;
 
 		//fprintf(debug, "CORE PR_STATUS\n");
@@ -243,7 +243,7 @@ static int parse_note_CORE(off64_t offset, Elf_Nhdr *note)
 }
 
 /* Obsolete */
-static int parse_note_XEN_CORE(off64_t offset, Elf_Nhdr *note)
+static int parse_note_XEN_CORE(struct arch *arch, off64_t offset, Elf_Nhdr *note)
 {
 	fprintf(debug, "unhandled \"XEN CORE\" note type %x\n", note->n_type);
 	return 1;
@@ -273,7 +273,7 @@ int parse_crash_note(struct domain *d, vaddr_t note_p, struct cpu_state *guest_c
 	if (strncmp("CORE", ELFNOTE_NAME(note), ELFNOTE_NAMESZ(note)) != 0)
 		goto err;
 
-	if (parse_note_CORE(0, note))
+	if (parse_note_CORE(d->_arch, 0, note))
 		goto err;
 
 	memcpy(guest_cpu, &current_cpu, sizeof(current_cpu));
@@ -287,7 +287,7 @@ err:
 	return 1;
 }
 
-static int parse_note_Xen(off64_t offset, Elf_Nhdr *note)
+static int parse_note_Xen(struct arch *arch, off64_t offset, Elf_Nhdr *note)
 {
 
 	switch (note->n_type) {
@@ -306,7 +306,7 @@ static int parse_note_Xen(off64_t offset, Elf_Nhdr *note)
 		if (current_cpu.flags == 0)
 			return 1;
 
-		if (kdump_parse_crash_regs(ELFNOTE_DESC(note), &current_cpu))
+		if (kdump_parse_crash_regs(arch, ELFNOTE_DESC(note), &current_cpu))
 			return 1;
 
 		//fprintf(debug, "Xen ELFNOTE_CRASH_REGS for CPU%d\n", current_cpu.nr);
@@ -365,7 +365,7 @@ static int note_get_symbol(char *text, char * name, uint64_t * val) {
 	return 0;
 }
 
-static int parse_note_VMCOREINFO(off64_t offset, Elf_Nhdr *note)
+static int parse_note_VMCOREINFO(struct arch *arch, off64_t offset, Elf_Nhdr *note)
 {
 	char * text;
 
@@ -380,7 +380,7 @@ static int parse_note_VMCOREINFO(off64_t offset, Elf_Nhdr *note)
 	return 0;
 }
 
-static int parse_note_VMCOREINFO_XEN(off64_t offset, Elf_Nhdr *note)
+static int parse_note_VMCOREINFO_XEN(struct arch *arch, off64_t offset, Elf_Nhdr *note)
 {
 	char * text;
    uint64_t val;
@@ -420,7 +420,7 @@ static int parse_note_VMCOREINFO_XEN(off64_t offset, Elf_Nhdr *note)
 
 static struct note_handler {
 	const char *name;
-	int (*handler)(off64_t offset, Elf_Nhdr *note);
+	int (*handler)(struct arch *arch, off64_t offset, Elf_Nhdr *note);
 } note_handlers[] = {
 	{ .name = "CORE", .handler = parse_note_CORE },
 	{ .name = "XEN CORE", .handler = parse_note_XEN_CORE },
@@ -430,7 +430,7 @@ static struct note_handler {
 };
 #define NR_NOTE_HANDLERS (sizeof(note_handlers)/sizeof(note_handlers[0]))
 
-static int parse_pt_note(Elf64_Phdr *phdr)
+static int parse_pt_note(struct arch *arch, Elf64_Phdr *phdr)
 {
 	off64_t offset = phdr->p_offset;
 	Elf_Nhdr *note;
@@ -454,7 +454,7 @@ static int parse_pt_note(Elf64_Phdr *phdr)
 		for(i=0; i<NR_NOTE_HANDLERS;i++) {
 			handler = &note_handlers[i];
 			if (strncmp(handler->name, ELFNOTE_NAME(note), note->n_namesz)==0) {
-				if (handler->handler(offset, note)) {
+				if (handler->handler(arch, offset, note)) {
 					fprintf(debug, "failed to handle note %s\n", ELFNOTE_NAME(note));
 				}
 				break;
@@ -473,7 +473,7 @@ static int parse_pt_note(Elf64_Phdr *phdr)
 	return 0;
 }
 
-static int parse_pt_load(Elf64_Phdr *phdr)
+static int parse_pt_load(struct arch *arch, Elf64_Phdr *phdr)
 {
 	void *mem;
 	struct memory_extent *mext;
@@ -496,7 +496,7 @@ static int parse_pt_load(Elf64_Phdr *phdr)
 }
 
 static int foreach_phdr_type(Elf64_Ehdr *ehdr, Elf_Word p_type,
-			     int (*callback)(Elf64_Phdr *phdr))
+			     int (*callback)(struct arch *arch, Elf64_Phdr *phdr))
 {
 	int i;
 
@@ -511,7 +511,7 @@ static int foreach_phdr_type(Elf64_Ehdr *ehdr, Elf_Word p_type,
 		}
 		if (phdr.p_type == p_type) {
 		   fprintf(debug, "parse Phdr entry %d of type 0x%x\n", i, phdr.p_type);
-			if ((*callback)(&phdr)) {
+			if ((*callback)(dump->_arch, &phdr)) {
 				fprintf(debug, "Error: failed to parse pt entry %d of type 0x%x\n", i,
 						phdr.p_type);
 			}

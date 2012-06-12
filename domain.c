@@ -111,6 +111,12 @@ static int parse_domain(vaddr_t domain, int nr_symtabs, const char **symtabs)
 	d->is_privileged = kdump_read_uint8_vaddr(NULL, domain+DOMAIN_is_privileged);
 	d->is_32bit_pv = kdump_read_uint8_vaddr(NULL, domain+DOMAIN_is_32bit_pv);
 
+	if (d->has_32bit_shinfo && dump->compat_arch) {
+		d->_arch = dump->compat_arch;
+	} else {
+		d->_arch = dump->_arch;
+	}
+
 	max_vcpus = kdump_read_uint32_vaddr(NULL, domain+DOMAIN_max_vcpus);
 	vcpu_array = kdump_read_pointer_vaddr(NULL, domain+DOMAIN_vcpus);
 
