@@ -168,14 +168,14 @@ int x86_32_set_prstatus(struct domain *d, void *_prs, struct cpu_state *cpu) {
 #define VM_VPAGES	0x00000010	/* buffer for pages was vmalloc'ed */
 
 struct vm_struct {
-	struct vm_struct *next;
-	void *addr;
-	unsigned long size;
-	unsigned long flags;
-	void **pages; // struct pages
-	unsigned int nr_pages;
-	unsigned long phys_addr;
-	void *caller;
+	uint32_t next; // struct vm_struct *next;
+	uint32_t addr; // void *addr;
+	uint32_t size; // unsigned long size;
+	uint32_t flags; // unsigned long flags;
+	uint32_t pages; // void **pages; struct pages
+	int32_t nr_pages; // unsigned int nr_pages;
+	uint32_t phys_addr; // unsigned long phys_addr;
+	uint32_t caller; // void *caller;
 };
 
 int x86_32_get_vmalloc_extents(struct domain *d, struct cpu_state *cpu, struct memory_extent ** extents_out) {
@@ -202,7 +202,7 @@ int x86_32_get_vmalloc_extents(struct domain *d, struct cpu_state *cpu, struct m
 		if ((ve.flags & VM_ALLOC) && ve.nr_pages != 0) {
 			ext = realloc(ext, sizeof(struct memory_extent) * (n_ext + ve.nr_pages));
 			vaddr = (vaddr_t) (uint32_t) ve.addr;
-			fprintf(debug, "vmlist 0x%llx === next %p addr %p flags %ld nr_pages %d \n", ve_addr, ve.next, ve.addr, ve.flags, ve.nr_pages);
+			fprintf(debug, "vmlist addr %#" PRIxVADDR " === next %#x addr %#x flags %#x nr_pages %#x \n", ve_addr, ve.next, ve.addr, ve.flags, ve.nr_pages);
 			// for every page of vmalloc area find machine address and fill extents
 			for (n = 0; n < ve.nr_pages; n++) {
 				vaddr = (vaddr_t) (uint32_t) ve.addr + (n << PAGE_SHIFT);
@@ -282,7 +282,7 @@ int x86_32_parse_guest_cpus(struct domain *d) {
 	}
 	crash_notes = kdump_read_uint32_vaddr(d, sym->address);
 
-	fprintf(debug, "crash_notes: %llx\n", crash_notes);
+	fprintf(debug, "crash_notes: %#" PRIxVADDR "\n", crash_notes);
 
 	// find __per_cpu_offset
 	sname = "__per_cpu_offset";
@@ -295,7 +295,7 @@ int x86_32_parse_guest_cpus(struct domain *d) {
 	for (c = 0; c < d->nr_vcpus; c++) {
 		cpu_offset = kdump_read_uint32_vaddr(d, sym->address + 4 * c);
 		cpu_note = crash_notes + cpu_offset;
-		fprintf(debug, "cpu %d cpu_offset: %llx cpu_note %llx \n", c, cpu_offset, cpu_note);
+		fprintf(debug, "cpu %d cpu_offset: %#" PRIxVADDR " cpu_note %#" PRIxVADDR "\n", c, cpu_offset, cpu_note);
 		if (parse_crash_note(d, cpu_note, &d->guest_cpus[c])) {
 			continue;
 		}
@@ -456,6 +456,7 @@ static int x86_32_parse_hypervisor(void *note)
 	dump->xen_major_version = x->xen_major_version;
 	dump->xen_minor_version = x->xen_minor_version;
 	dump->tainted = x->tainted;
+
 	if (x->xen_extra_version)
 		dump->xen_extra_version = kdump_read_string_maddr(x->xen_extra_version);
 	if (x->xen_changeset)

@@ -69,7 +69,7 @@ static void bitness_init() {
 		fprintf(debug, "Error Symbol not found xen_phys_start\n");
 	} else {
 		xen_phys_start = kdump_read_uint64_vaddr(NULL, sym->address);
-		fprintf(debug, "xen_phys_start = 0x%llx\n", xen_phys_start);
+		fprintf(debug, "xen_phys_start = %#" PRIxMADDR "\n", xen_phys_start);
 	}
 }
 
@@ -120,7 +120,7 @@ mem_range_t * FN(get_page_ranges_xen)() {
 		goto return_error;
 	}
 	mfn_end = kdump_virt_to_mach(&dump->cpus[0], sym->address) >> PAGE_SHIFT;
-	fprintf(debug, "mfn_end = %#llx\n", mfn_end);
+	fprintf(debug, "mfn_end =  %#" PRIxMADDR "\n", mfn_end);
 
 	// frame table is defined as
 	// struct page_info *frame_table

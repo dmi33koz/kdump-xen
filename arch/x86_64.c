@@ -302,7 +302,7 @@ static int x86_64_parse_vcpu(struct cpu_state *cpu, vaddr_t vcpu_info)
 	cpu->x86_regs.gs = user_regs.gs;
 	cpu->x86_regs.ss = user_regs.ss;
 	cpu->x86_regs.cs = user_regs.cs;
-	fprintf(debug, "%s user_regs.eflags 0x%llx\n", __FUNCTION__, user_regs.eflags);
+	fprintf(debug, "%s user_regs.eflags %#" PRIx64 "\n", __FUNCTION__, user_regs.eflags);
 
 	return 0;
 }

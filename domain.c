@@ -178,7 +178,7 @@ static int parse_domain(vaddr_t domain, int nr_symtabs, const char **symtabs)
 		} else {
 			d->high_memory = kdump_read_uint64_vaddr(d, high_memory_s->address);
 		}
-		fprintf(debug, "Symbol high_memory fount 0x%llx\n", d->high_memory);
+		fprintf(debug, "Symbol high_memory fount %#" PRIxVADDR "\n", d->high_memory);
 	}
 
 	if (kdump_parse_guest_cpus(d))

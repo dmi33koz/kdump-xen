@@ -373,7 +373,7 @@ static int parse_note_VMCOREINFO(struct arch *arch, off64_t offset, Elf_Nhdr *no
 	memcpy(text, ELFNOTE_DESC(note), note->n_descsz);
 	text[note->n_descsz] = '\0';
 
-	fprintf(debug, "parse_note_VMCOREINFO note type %x size %d len %d\n",
+	fprintf(debug, "parse_note_VMCOREINFO note type %x size %d len %Zd\n",
 			note->n_type, note->n_descsz, strlen(text));
 	fprintf(debug, ">>%s<<\n", text);
 	free(text);
@@ -389,7 +389,7 @@ static int parse_note_VMCOREINFO_XEN(struct arch *arch, off64_t offset, Elf_Nhdr
 	memcpy(text, ELFNOTE_DESC(note), note->n_descsz);
 	text[note->n_descsz] = '\0';
 
-	fprintf(debug, "parse_note_VMCOREINFO_XEN note type %x size %d len %d\n",
+	fprintf(debug, "parse_note_VMCOREINFO_XEN note type %x size %d len %Zd\n",
 			note->n_type, note->n_descsz, strlen(text));
 	fprintf(debug, ">>%s<<\n", text);
 
@@ -525,7 +525,7 @@ int create_elf_header_xen(FILE *f, mem_range_t * mr_first) {
 	mem_range_t * mr = mr_first;
 
 	while (mr) {
-		fprintf(debug, "ELF PT_LOAD start mfn 0x%llx end mfn 0x%llx pages 0x%llx vaddr 0x%llx\n", mr->mfn, mr->mfn + mr->page_count,
+		fprintf(debug, "ELF PT_LOAD start mfn %#" PRIxMADDR " end mfn %#" PRIxMADDR " pages %#" PRIx64 " vaddr %#" PRIxVADDR "\n", mr->mfn, mr->mfn + mr->page_count,
 				mr->page_count, mr->vaddr);
 
 		p_info = __add_phdr_info(&elfall, PT_LOAD, PF_R | PF_W | PF_X);
