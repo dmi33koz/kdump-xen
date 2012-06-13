@@ -249,6 +249,18 @@ static int parse_note_XEN_CORE(struct arch *arch, off64_t offset, Elf_Nhdr *note
 	return 1;
 }
 
+static int check_note_name(Elf_Nhdr *note) {
+	int i;
+	const char *name = ELFNOTE_NAME(note);
+	uint32_t size = note->n_namesz;
+	for (i = 0; i < size; i++) {
+		if (name[i] == 0) {
+			return 0; // name is \0 terminated
+		}
+	}
+	return 1; // name is not \0 terminated
+}
+
 // read crash_note from vaddr and set current_cpu to the state
 int parse_crash_note(struct domain *d, vaddr_t note_p, struct cpu_state *guest_cpu) {
 	Elf_Nhdr *note = NULL;
@@ -262,6 +274,9 @@ int parse_crash_note(struct domain *d, vaddr_t note_p, struct cpu_state *guest_c
 	if (note->n_type != NT_PRSTATUS || !ELFNOTE_NAMESZ(note) || !ELFNOTE_DESCSZ(note))
 		goto err;
 
+	if (check_note_name(note) != 0)
+		goto err;
+
 	size = ELFNOTE_SIZE(note);
 	note = realloc(note, size);
 
@@ -270,7 +285,7 @@ int parse_crash_note(struct domain *d, vaddr_t note_p, struct cpu_state *guest_c
 		goto err;
 
 	//hex_dump(0, note, size);
-	if (strncmp("CORE", ELFNOTE_NAME(note), ELFNOTE_NAMESZ(note)) != 0)
+	if (strcmp("CORE", ELFNOTE_NAME(note)) != 0)
 		goto err;
 
 	if (parse_note_CORE(d->_arch, 0, note))
@@ -417,56 +432,51 @@ static int parse_note_VMCOREINFO_XEN(struct arch *arch, off64_t offset, Elf_Nhdr
 	return 0;
 }
 
-
-static struct note_handler {
-	const char *name;
-	int (*handler)(struct arch *arch, off64_t offset, Elf_Nhdr *note);
-} note_handlers[] = {
-	{ .name = "CORE", .handler = parse_note_CORE },
-	{ .name = "XEN CORE", .handler = parse_note_XEN_CORE },
-	{ .name = "Xen", .handler = parse_note_Xen },
-	{ .name = "VMCOREINFO", .handler = parse_note_VMCOREINFO },
-	{ .name = "VMCOREINFO_XEN", .handler = parse_note_VMCOREINFO_XEN },
-};
-#define NR_NOTE_HANDLERS (sizeof(note_handlers)/sizeof(note_handlers[0]))
-
-static int parse_pt_note(struct arch *arch, Elf64_Phdr *phdr)
-{
+static int parse_pt_note(struct arch *arch, Elf64_Phdr *phdr) {
 	off64_t offset = phdr->p_offset;
 	Elf_Nhdr *note;
+	const char *name;
+	uint32_t size;
 	unsigned char notes[phdr->p_filesz];
-	struct note_handler *handler;
-	int i, n;
+	int n, ret;
 	phdr_info_t *p_info;
 
-	if (kdump_read(notes,  phdr->p_offset, phdr->p_filesz) != phdr->p_filesz)
-	{
-		fprintf(debug, "failed to read PT_NOTE: %s\n", strerror(errno));
+	if (kdump_read(notes, phdr->p_offset, phdr->p_filesz) != phdr->p_filesz) {
+		fprintf(debug, "Failed to read PT_NOTE: %s\n", strerror(errno));
 		return 1;
 	}
 
 	p_info = __add_phdr_info(&elfall, phdr->p_type, phdr->p_flags);
 	n = 0;
-	for (note = (Elf_Nhdr*)notes;
-	     (void*)note < (void*)notes + phdr->p_filesz - 1;
-	     note = ELFNOTE_NEXT(note))	{
-		fprintf(debug, "parse Note entry %d type 0x%x name %s\n", n, phdr->p_type, ELFNOTE_NAME(note));
-		for(i=0; i<NR_NOTE_HANDLERS;i++) {
-			handler = &note_handlers[i];
-			if (strncmp(handler->name, ELFNOTE_NAME(note), note->n_namesz)==0) {
-				if (handler->handler(arch, offset, note)) {
-					fprintf(debug, "failed to handle note %s\n", ELFNOTE_NAME(note));
-				}
-				break;
+	for (note = (Elf_Nhdr*) notes; (void*) note < (void*) notes + phdr->p_filesz - 1; note = ELFNOTE_NEXT(note)) {
+      name = ELFNOTE_NAME(note);
+      size = note->n_namesz;
+		fprintf(debug, "Parsing Note entry %d type 0x%x name %s\n", n, phdr->p_type, name);
+
+		if (check_note_name(note) == 0) {
+			if (strcmp("CORE", name) == 0) {
+				ret = parse_note_CORE(arch, offset, note);
+			} else if (strcmp("XEN CORE", name) == 0) {
+				ret = parse_note_XEN_CORE(arch, offset, note);
+			} else if (strcmp("Xen", name) == 0) {
+				ret = parse_note_Xen(arch, offset, note);
+			} else if (strcmp("VMCOREINFO", name) == 0) {
+				ret = parse_note_VMCOREINFO(arch, offset, note);
+			} else if (strcmp("VMCOREINFO_XEN", name) == 0) {
+				ret = parse_note_VMCOREINFO_XEN(arch, offset, note);
+			} else {
+				fprintf(debug, "Unknown note entry name %s\n", name);
+				ret = 0;
 			}
+			if (ret) {
+				fprintf(debug, "Failed to handle note entry %s\n", name);
+			}
+			__add_note(p_info, name, note->n_type, (char*) ELFNOTE_DESC(note), note->n_descsz);
+		} else {
+			fprintf(debug, "Invalid note %d name\n", n);
 		}
-		__add_note(p_info, ELFNOTE_NAME(note), note->n_type, (char*) ELFNOTE_DESC(note), note->n_descsz);
 
-		if (i == NR_NOTE_HANDLERS) {
-			fprintf(debug, "unknown note type %s\n", ELFNOTE_NAME(note));
-		}
-
-		offset += (off64_t)(unsigned long)ELFNOTE_NEXT(note) - (off64_t)(unsigned long)note;
+		offset += (off64_t) (unsigned long) ELFNOTE_NEXT(note) - (off64_t) (unsigned long) note;
 		n++;
 	}
 
