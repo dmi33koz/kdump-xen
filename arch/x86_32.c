@@ -110,6 +110,7 @@ static int x86_32_parse_prstatus(void *_prs, struct cpu_state *cpu)
 	cpu->flags |= CPU_PHYSICAL;
 	cpu->flags |= CPU_CORE_STATE;
 
+   cpu->pr_pid = prs->pr_pid;
 	cpu->x86_regs.eip = prs->pr_reg[PR_REG_EIP];
 	cpu->x86_regs.cs = prs->pr_reg[PR_REG_CS];
 	cpu->x86_regs.eflags = prs->pr_reg[PR_REG_EFLAGS];
@@ -154,6 +155,8 @@ int x86_32_set_prstatus(struct domain *d, void *_prs, struct cpu_state *cpu) {
 	prs->pr_reg[14] = cpu->x86_regs._eflags;
 	prs->pr_reg[15] = cpu->x86_regs._esp;
 	prs->pr_reg[16] = cpu->x86_regs.ss;
+	prs->pr_pid = cpu->pr_pid;
+
 	fprintf(debug, "cpu registers:\n");
 	//hex_dump(0, prs->pr_reg, 4 * 17);
 
@@ -303,6 +306,7 @@ int x86_32_parse_guest_cpus(struct domain *d) {
 		// hack - guest cpus should be the same as vcpu but with different registers
 		memcpy(&tmp_cpu, &d->vcpus[c], sizeof(tmp_cpu));
 		tmp_cpu.x86_regs = d->guest_cpus[c].x86_regs;
+		tmp_cpu.pr_pid = d->guest_cpus[c].pr_pid;
 		memcpy(&d->guest_cpus[c], &tmp_cpu, sizeof(tmp_cpu));
 
 		d->guest_cpus[c].valid = 1;
@@ -556,6 +560,8 @@ static int x86_32_print_cpu_state(FILE *o, struct cpu_state *cpu)
 	}
 	else
 	{
+		len += fprintf(o, "\tPid: %d\n", cpu->pr_pid);
+
 		len += fprintf(o, "\tVCPU pause flags: %#"PRIx64" ", cpu->virtual.flags);
 		len += fprintf(o, "arch flags %#"PRIx64"\n", cpu->virtual.arch_flags);
 		len += fprintf(o, "\n");

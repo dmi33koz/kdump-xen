@@ -43,6 +43,8 @@ struct cpu_state {
 			uint64_t flags, arch_flags;
 		} virtual;
 	};
+
+	int32_t pr_pid; // running pid
 	struct {
 		// x86_64 only
 		uint64_t r8;

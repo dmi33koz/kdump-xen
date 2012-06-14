@@ -131,6 +131,7 @@ static int x86_64_parse_prstatus(void *_prs, struct cpu_state *cpu)
 	cpu->flags |= CPU_PHYSICAL;
 	cpu->flags |= CPU_CORE_STATE;
 
+	cpu->pr_pid = prs->pr_pid;
 	cpu->x86_regs.r15 	= prs->pr_reg[PR_REG_r15];
 	cpu->x86_regs.r14 	= prs->pr_reg[PR_REG_r14];
 	cpu->x86_regs.r13 	= prs->pr_reg[PR_REG_r13];
@@ -421,6 +422,8 @@ static int x86_64_print_cpu_state(FILE *o, struct cpu_state *cpu)
 	}
 	else
 	{
+		len += fprintf(o, "\tPid: %d\n", cpu->pr_pid);
+
 		len += fprintf(o, "\tVCPU pause flags: %#"PRIx64" ", cpu->virtual.flags);
 		len += fprintf(o, "arch flags %#"PRIx64"\n", cpu->virtual.arch_flags);
 		len += fprintf(o, "\n");

@@ -563,6 +563,7 @@ int create_elf_header_dom(FILE *f, int dom_id) {
 	int prstatus_size;
 	struct memory_extent *vmalloc_extents;
 	int vmalloc_count, n;
+	int cpuid;
 
 	fprintf(debug, "%s: domid %d\n", __FUNCTION__, dom_id);
 
@@ -581,7 +582,12 @@ int create_elf_header_dom(FILE *f, int dom_id) {
 	// add note(s) program header
 	p_info = __add_phdr_info(&all, PT_NOTE, 0);
 	// for each domain cpu add "CORE" note
-	for_each_vcpu(d, vcpu) {
+	for (cpuid = 0; cpuid < d->nr_vcpus; cpuid++) {
+		if (d->guest_cpus[cpuid].valid) {
+			vcpu = &d->guest_cpus[cpuid]; // cpu state from crash_notes
+		} else {
+			vcpu = &d->vcpus[cpuid]; // xen vcpu state
+		}
 		prstatus_size = kdump_set_prstatus(d, prs, vcpu);
 		fprintf(debug, "adding note ELF_Prstatus size = 0x%x\n", prstatus_size);
 		__add_note(p_info, "CORE", NT_PRSTATUS, (char*) &prs, prstatus_size);
