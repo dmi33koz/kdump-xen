@@ -398,6 +398,43 @@ static void dump_domain_console_ring(FILE *o, struct domain *d)
 	__dump_console_ring(o, d, "\t", ring, len, producer, consumer);
 }
 
+static void dump_domain_version_info(FILE *o, struct domain *d) {
+	struct symbol *sym;
+	char * sname;
+	char * txt;
+	maddr_t maddr;
+
+	fprintf(o, "  Kernel info:\n");
+
+	txt = NULL;
+	sname = "linux_banner";
+	sym = symtab_lookup_name(d->symtab, sname);
+	if (sym) {
+		maddr = kdump_virt_to_mach(&d->vcpus[0], sym->address);
+		txt = kdump_read_string_maddr(maddr);
+	} else {
+		fprintf(debug, "Error Symbol not found: %s\n", sname);
+	}
+	if (txt) {
+		fprintf(o, "  %s", txt);
+	}
+
+	// find git ish
+	txt = NULL;
+	sname = "linux_git_ish";
+	sym = symtab_lookup_name(d->symtab, sname);
+	if (sym) {
+		maddr = kdump_virt_to_mach(&d->vcpus[0], sym->address);
+		txt = kdump_read_string_maddr(maddr);
+	} else {
+		fprintf(debug, "Error Symbol not found: %s\n", sname);
+	}
+	if (txt) {
+		fprintf(o, "  %s\n", txt);
+	}
+	fprintf(o, "\n");
+}
+
 static void __dump_domain(struct domain *d)
 {
 	struct cpu_state *vcpu;
@@ -414,6 +451,8 @@ static void __dump_domain(struct domain *d)
 		o = output;
 
 	fprintf(o, "Domain %d:\n", d->domid);
+
+	dump_domain_version_info(o, d);
 
 	fprintf(o, "  Flags:      %s%s%s\n",
 		d->is_hvm ? " HVM" : "",
@@ -435,7 +474,8 @@ static void __dump_domain(struct domain *d)
 
 	for_each_guest_cpu(d, vcpu) {
 		if (vcpu->valid) {
-			fprintf(o, "  Guest CPU%d", vcpu->nr);
+			fprintf(o, "  Guest Crash Note found for cpu %d\n", vcpu->nr);
+			fprintf(o, "  VCPU%d", vcpu->nr);
 			kdump_print_cpu_state(o, vcpu);
 			dump_cpu_stack(o, vcpu);
 		}
