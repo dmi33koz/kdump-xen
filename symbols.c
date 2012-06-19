@@ -108,6 +108,9 @@ static struct symbol *__symtab_lookup_name(struct symbol *s, const char *name)
 
 struct symbol *symtab_lookup_name(struct symbol_table *symtab, const char *name)
 {
+	if (!symtab) {
+		return NULL;
+	}
 	return __symtab_lookup_name(symtab->symbol_table, name);
 }
 

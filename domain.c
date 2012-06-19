@@ -169,6 +169,9 @@ static int parse_domain(vaddr_t domain, int nr_symtabs, const char **symtabs)
 		else
 			fprintf(output, "Domain %d symbol table: %s\n", d->domid, symtabs[d->domid]);
 	}
+	if (!d->symtab) {
+		return 0;
+	}
 	high_memory_s = symtab_lookup_name(d->symtab, "high_memory");
 	if (!high_memory_s) {
 		fprintf(debug, "Error Symbol not found high_memory\n");
