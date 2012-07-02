@@ -535,7 +535,7 @@ static void dump_xen_memory_new(const char *file) {
 		mr_first = get_page_ranges_xen_32(dump);
 	}
 	if (!mr_first) {
-		debug("Failed to collect XEN memory ranges");
+		debug("Failed to collect XEN memory ranges\n");
 		fprintf(output, "  Failed to collect XEN memory ranges\n");
 		return;
 	}

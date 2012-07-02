@@ -249,8 +249,8 @@ int x86_32_get_vmalloc_extents(struct domain *d, struct cpu_state *cpu, struct m
 	ext = realloc(ext, sizeof(struct memory_extent) * n_ext);
 
 	extern int cache_hits;
-	debug("     n_ext %d\n", n_ext);
-	debug("     cache_hits %d\n", cache_hits);
+	debug("Vmalloc extents: %d\n", n_ext);
+	debug("Page cache hits: %d\n", cache_hits);
 	*extents_out = ext;
 	return n_ext;
 	err: if (ext) {
@@ -484,7 +484,8 @@ static int x86_32_parse_hypervisor(void *note)
 	if (x->xen_compile_time)
 		dump->xen_compile_time  = kdump_read_string_maddr(x->xen_compile_time);
 
-	debug("Xen version %d.%d.%d\n", dump->xen_major_version, dump->xen_minor_version, dump->xen_extra_version);
+	debug("Xen version %"PRId64".%"PRId64".%s\n",
+			dump->xen_major_version, dump->xen_minor_version, dump->xen_extra_version ? dump->xen_extra_version : "");
 	return 0;
 }
 

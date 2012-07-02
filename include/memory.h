@@ -83,4 +83,6 @@ static inline uint64_t kdump_read_uint64_vaddr(struct domain *domain, vaddr_t va
 	return kdump_read_uint64_vaddr_cpu(cpu, vaddr);
 }
 
+struct memory_extent *locate_maddr(maddr_t maddr);
+
 #endif

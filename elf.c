@@ -45,8 +45,8 @@ typedef Elf32_Word Elf_Word;
 
 typedef struct phdr_info {
 	Elf64_Phdr phdr;
-	char *data;
-	int size;
+	char *data; // used by note header if null - data will be written separately
+	uint64_t size;
 } phdr_info_t;
 
 typedef struct {
@@ -66,16 +66,12 @@ elf_all_t elfall;
 // it reallocated structures so old pointers become invalid.
 static phdr_info_t * __add_phdr_info(elf_all_t *all, Elf_Word type, Elf_Word flags) {
 	phdr_all_t *p_all;
-	void *tmp;
 	phdr_info_t *pi;
 
 	p_all = &all->phdrs;
-	if (p_all->count == 0) {
-		p_all->pinfos = malloc(sizeof(phdr_info_t));
-	} else {
-		tmp = realloc(p_all->pinfos, sizeof(phdr_info_t) * (p_all->count + 1));
-		p_all->pinfos = tmp;
-	}
+
+	p_all->pinfos = realloc(p_all->pinfos, sizeof(phdr_info_t) * (p_all->count + 1));
+
 	pi = &p_all->pinfos[p_all->count];
 	memset(pi, '\0', sizeof(phdr_info_t));
 	p_all->count++;
@@ -122,25 +118,59 @@ static void __add_note(phdr_info_t *pi, const char * name, Elf_Word type, char *
 
 static void __fix_section_offsets(elf_all_t *all) {
 	phdr_all_t *p_all = &all->phdrs;
-	phdr_info_t *pi;
-	int i;
-	unsigned int data_offset;
-	data_offset = sizeof(Elf64_Ehdr) + p_all->count * sizeof(Elf64_Phdr);
+	phdr_info_t *pi, *piv;
+	int i, v;
+	uint64_t offset;
+	offset = sizeof(Elf64_Ehdr) + p_all->count * sizeof(Elf64_Phdr);
 
+	// Notes come before loads
 	for (i = 0; i < p_all->count; i++) {
 		pi = &p_all->pinfos[i];
-		pi->phdr.p_offset = pi->phdr.p_paddr + data_offset;
-		// only NOTE header has data and size now
-		// for DOM0 - LOAD data == NULL it will be written right after ELF headers
-		if (pi->data) {
-			data_offset += pi->size;
+		if (pi->phdr.p_type == PT_NOTE) {
+			pi->phdr.p_offset = offset;
+			offset += pi->size;
+			debug("Note phdr %d data_offset %#" PRIx64 " p_paddr %#" PRIx64 " p_offset %#" PRIx64 " data %p size %#" PRIx64 "\n",
+					i, offset, pi->phdr.p_paddr, pi->phdr.p_offset, pi->data, pi->size);
+		}
+	}
+
+   // Loads with actual data
+	for (i = 0; i < p_all->count; i++) {
+		pi = &p_all->pinfos[i];
+		if (pi->phdr.p_type == PT_LOAD && pi->size) {
+			pi->phdr.p_offset = offset;
+			offset += pi->size;
+			debug("Load phdr %d data_offset %#" PRIx64 " p_paddr %#" PRIx64 " p_offset %#" PRIx64 " data %p size %#" PRIx64 "\n",
+					i, offset, pi->phdr.p_paddr, pi->phdr.p_offset, pi->data, pi->size);
+		}
+	}
+
+   // Extra Loads for virtual addresses pointing to data in other loads
+	for (v = 0; v < p_all->count; v++) {
+		piv = &p_all->pinfos[v];
+		if (piv->phdr.p_type == PT_LOAD && piv->size == 0) {
+			for (i = 0; i < p_all->count; i++) {
+				pi = &p_all->pinfos[i];
+				if (pi->phdr.p_type == PT_LOAD && pi->size) {
+					if (pi->phdr.p_paddr <= piv->phdr.p_paddr && pi->phdr.p_paddr + pi->phdr.p_memsz >= piv->phdr.p_paddr + piv->phdr.p_memsz) {
+						piv->phdr.p_offset = pi->phdr.p_offset + piv->phdr.p_paddr - pi->phdr.p_paddr;
+						debug("Virtual phdr %d data_offset %#" PRIx64 " p_paddr %#" PRIx64 " p_offset %#" PRIx64 " data %p size %#" PRIx64 "\n",
+								v, offset, piv->phdr.p_paddr, piv->phdr.p_offset, piv->data, piv->size);
+						break;
+					}
+				}
+			}
+			if (i == p_all->count) {
+				debug("Error: unable to find p_offset for load header %d\n", v);
+				piv->phdr.p_offset = 0;
+			}
 		}
 	}
 }
 
 static void __write_buf(FILE *f, void *b, int size) {
 	static int offset = 0;
-	hex_dump(offset, (char*) b, size);
+	//hex_dump(offset, (char*) b, size);
 	offset += size;
 	if (fwrite(b, 1, size, f) < 0) {
 		exit(-1);
@@ -150,22 +180,34 @@ static void __write_buf(FILE *f, void *b, int size) {
 static void __write_all_elfs(FILE *f, elf_all_t *all) {
 	Elf64_Ehdr *ehdr = &all->ehdr;
 	phdr_all_t *p_all = &all->phdrs;
-	int pi_index = 0;
-	phdr_info_t *p_info;
+	int i = 0;
+	phdr_info_t *pi;
 	p_all = &all->phdrs;
 
 	// write Ehdr
 	__write_buf(f, ehdr, sizeof(Elf64_Ehdr));
-	// write all Phdr(s)
-	for (pi_index = 0; pi_index < p_all->count; pi_index++) {
-		p_info = &p_all->pinfos[pi_index];
-		__write_buf(f, &p_info->phdr, sizeof(Elf64_Phdr));
+
+	// write all Note Phdr(s)
+	for (i = 0; i < p_all->count; i++) {
+		pi = &p_all->pinfos[i];
+		if (pi->phdr.p_type == PT_NOTE) {
+			__write_buf(f, &pi->phdr, sizeof(Elf64_Phdr));
+		}
+	}
+	// write all Note Phdr(s)
+	for (i = 0; i < p_all->count; i++) {
+		pi = &p_all->pinfos[i];
+		if (pi->phdr.p_type == PT_LOAD && pi->phdr.p_offset) {
+			__write_buf(f, &pi->phdr, sizeof(Elf64_Phdr));
+		}
 	}
 	// write all Phdr(s) data
-	for (pi_index = 0; pi_index < p_all->count; pi_index++) {
-		p_info = &p_all->pinfos[pi_index];
-		if (p_info->data) {
-			__write_buf(f, p_info->data, p_info->size);
+	// only note phdr has data for now
+	// load data will be written separately
+	for (i = 0; i < p_all->count; i++) {
+		pi = &p_all->pinfos[i];
+		if (pi->data && pi->size) {
+			__write_buf(f, pi->data, pi->size);
 		}
 	}
 }
@@ -545,7 +587,9 @@ int create_elf_header_xen(FILE *f, mem_range_t * mr_first) {
 		p_info->phdr.p_vaddr = mr->vaddr;
 		p_info->phdr.p_paddr = mr->mfn << PAGE_SHIFT;
 		p_info->phdr.p_filesz = mr->page_count << PAGE_SHIFT;
-		p_info->phdr.p_memsz = mr->page_count << PAGE_SHIFT;
+		p_info->phdr.p_memsz = p_info->phdr.p_filesz;
+		p_info->data = NULL; // data will be written separately
+		p_info->size = p_info->phdr.p_filesz;
 		mr = mr->next;
 	}
 
@@ -568,7 +612,7 @@ int create_elf_header_dom(FILE *f, int dom_id) {
 	int vmalloc_count, n;
 	int cpuid;
 
-	debug("%s: domid %d\n", __FUNCTION__, dom_id);
+	debug("Domain id %d\n", dom_id);
 
 	d = &dump->domains[dom_id];
 
@@ -605,6 +649,8 @@ int create_elf_header_dom(FILE *f, int dom_id) {
 	p_info->phdr.p_filesz = d->high_memory - d->symtab->lowest_kernel_address;
 	p_info->phdr.p_memsz = p_info->phdr.p_filesz;
 	p_info->phdr.p_align = PAGE_SIZE;
+	p_info->data = NULL;
+	p_info->size = p_info->phdr.p_memsz;
 
 	/* ELF PT_LOAD program header for the
 	 * virtual range high_memory -> max pfn
@@ -616,6 +662,8 @@ int create_elf_header_dom(FILE *f, int dom_id) {
 	p_info->phdr.p_filesz = (d->shared_info.max_pfn << PAGE_SHIFT) - (d->high_memory - d->symtab->lowest_kernel_address);
 	p_info->phdr.p_memsz = p_info->phdr.p_filesz;
 	p_info->phdr.p_align = PAGE_SIZE;
+	p_info->data = NULL;
+	p_info->size = p_info->phdr.p_memsz;
 
 	vmalloc_count = x86_32_get_vmalloc_extents(d, vcpu, &vmalloc_extents);
 	for (n = 0; n < vmalloc_count; n++) {
@@ -625,6 +673,9 @@ int create_elf_header_dom(FILE *f, int dom_id) {
 		p_info->phdr.p_filesz = (vmalloc_extents + n)->length;
 		p_info->phdr.p_memsz = p_info->phdr.p_filesz;
 		p_info->phdr.p_align = PAGE_SIZE;
+		p_info->data = NULL;
+		p_info->size = 0; // fake header - points to data in other headers
+
 	}
 	__fix_section_offsets(&all);
 	__write_all_elfs(f, &all);

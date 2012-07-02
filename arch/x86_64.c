@@ -162,9 +162,8 @@ static int x86_64_parse_prstatus(void *_prs, struct cpu_state *cpu)
 
 int x86_64_set_prstatus(struct domain *d, void *_prs, struct cpu_state *cpu)
 {
-	debug("%s function not implemented.\n", __FUNCTION__);
-	exit(-1);
-	return 0;
+	debug("Error: Not implemented\n");
+	return -1;
 }
 
 static int x86_64_parse_crash_regs(void *_cr, struct cpu_state *cpu)
@@ -205,6 +204,7 @@ static int x86_64_parse_crash_regs(void *_cr, struct cpu_state *cpu)
 }
 
 int x86_64_parse_guest_cpus(struct domain *d) {
+	debug("Error: Not implemented\n");
 	return -1;
 }
 
@@ -337,7 +337,8 @@ static int x86_64_parse_hypervisor(void *note)
 	if (x->xen_compile_time)
 		dump->xen_compile_time  = kdump_read_string_maddr(x->xen_compile_time);
 
-	debug("Xen version %d.%d.%d\n", dump->xen_major_version, dump->xen_minor_version, dump->xen_extra_version);
+	debug("Xen version %"PRId64".%"PRId64".%s\n",
+			dump->xen_major_version, dump->xen_minor_version, dump->xen_extra_version ? dump->xen_extra_version : "");
 	return 0;
 
 }

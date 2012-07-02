@@ -9,7 +9,7 @@
 #include "memory.h"
 
 /* Locate struct memory_extent containing a specific address. */
-static struct memory_extent *locate_maddr(maddr_t maddr)
+struct memory_extent *locate_maddr(maddr_t maddr)
 {
 	int i;
 	struct memory_extent *mext;
@@ -19,8 +19,7 @@ static struct memory_extent *locate_maddr(maddr_t maddr)
 		if (mext->maddr <= maddr && maddr < mext->maddr+mext->length)
 			return mext;
 	}
-	debug("could not locate machine address extent containing %"PRIxMADDR"\n",
-		maddr);
+	debug("could not locate machine address extent containing %"PRIxMADDR"\n",	maddr);
 
 	return NULL;
 }
@@ -55,6 +54,9 @@ size_t kdump_read_maddr(maddr_t maddr, void *buf, size_t size)
 	maddr_t mfn;
 	int i;
 
+	if (maddr >> PAGE_SHIFT != (maddr + size - 1) >> PAGE_SHIFT) {
+		debug("Warning: reading across page boundary maddr %#" PRIxMADDR " size %Zd\n", maddr, size);
+	}
 	if (!cache_initialized) {
 		init_cache();
 		cache_initialized = 1;
