@@ -131,6 +131,7 @@ mem_range_t * FN(get_page_ranges_xen)() {
 		if ((mfn * dump->sizeof_page_info) % PAGE_SIZE == 0) {
 			buffer_shift = mfn * dump->sizeof_page_info;
 			if (kdump_read_vaddr(NULL, frame_table + buffer_shift, buffer, PAGE_SIZE) != PAGE_SIZE) {
+				debug("Failed to read frame_table\n");
 				fprintf(output, "\tFailed to read frame_table\n");
 				goto return_error;
 			}

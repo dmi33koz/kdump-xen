@@ -153,6 +153,7 @@ static void dump_cpu_stack(FILE *o, struct cpu_state *cpu)
 
 	if (kdump_read_vaddr_cpu(cpu, stack_base, stack, PAGE_SIZE) != PAGE_SIZE)
 	{
+		debug("failed to read vaddr %"PRIxVADDR"\n", stack_base);
 		fprintf(o, "\tStack unavailable.\n\n");
 		return;
 	}
@@ -519,10 +520,11 @@ static void dump_xen_memory_new(const char *file) {
 	int elf_header_size = 0;
 	unsigned char buf[PAGE_SIZE];
 
-	debug("dump_xen_memory_old()\n");
+	debug("dump_xen_memory_new()\n");
 
 	mem = fopen_in_output_directory(file, "w");
 	if (mem == NULL) {
+		debug("Failed to open output %s\n", file);
 		fprintf(output, "  Failed to open output %s\n", file);
 		return;
 	}
@@ -533,6 +535,7 @@ static void dump_xen_memory_new(const char *file) {
 		mr_first = get_page_ranges_xen_32(dump);
 	}
 	if (!mr_first) {
+		debug("Failed to collect XEN memory ranges");
 		fprintf(output, "  Failed to collect XEN memory ranges\n");
 		return;
 	}
@@ -556,6 +559,7 @@ static void dump_xen_memory_new(const char *file) {
 	}
 	out: free_mem_range(mr_first);
 	fclose(mem);
+	debug("xen memory dumped OK\n");
 }
 
 static void dump_xen_memory_old(const char *file)

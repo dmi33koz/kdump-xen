@@ -304,7 +304,6 @@ err:
 
 static int parse_note_Xen(struct arch *arch, off64_t offset, Elf_Nhdr *note)
 {
-
 	switch (note->n_type) {
 	case XEN_ELFNOTE_CRASH_INFO:
 
@@ -390,7 +389,7 @@ static int parse_note_VMCOREINFO(struct arch *arch, off64_t offset, Elf_Nhdr *no
 
 	debug("parse_note_VMCOREINFO note type %x size %d len %Zd\n",
 			note->n_type, note->n_descsz, strlen(text));
-	debug(">>%s<<\n", text);
+	debug("\n%s\n", text);
 	free(text);
 	return 0;
 }
@@ -406,7 +405,7 @@ static int parse_note_VMCOREINFO_XEN(struct arch *arch, off64_t offset, Elf_Nhdr
 
 	debug("parse_note_VMCOREINFO_XEN note type %x size %d len %Zd\n",
 			note->n_type, note->n_descsz, strlen(text));
-	debug(">>%s<<\n", text);
+	debug("\n%s\n", text);
 
 	if (note_get_symbol_hex(text, "SYMBOL(frame_table)=", &val) == 0) {
 		dump->frame_table = val;
@@ -451,7 +450,7 @@ static int parse_pt_note(struct arch *arch, Elf64_Phdr *phdr) {
 	for (note = (Elf_Nhdr*) notes; (void*) note < (void*) notes + phdr->p_filesz - 1; note = ELFNOTE_NEXT(note)) {
       name = ELFNOTE_NAME(note);
       size = note->n_namesz;
-		debug("Parsing Note entry %d type 0x%x name %s\n", n, phdr->p_type, name);
+		debug("Parsing Note entry %d type 0x%x name %s\n", n, note->n_type, name);
 
 		if (check_note_name(note) == 0) {
 			if (strcmp("CORE", name) == 0) {
@@ -489,8 +488,10 @@ static int parse_pt_load(struct arch *arch, Elf64_Phdr *phdr)
 	struct memory_extent *mext;
 
 	mem = realloc(dump->machine_memory,(dump->nr_machine_memory+1)*sizeof(struct memory_extent));
-	if (mem == NULL)
+	if (mem == NULL) {
+		debug("malloc failed\n");
 		return 1;
+	}
 	dump->machine_memory=mem;
 
 	mext = &dump->machine_memory[dump->nr_machine_memory];
@@ -500,6 +501,8 @@ static int parse_pt_load(struct arch *arch, Elf64_Phdr *phdr)
 	mext->length = phdr->p_memsz;
 	mext->offset = phdr->p_offset;
 
+	debug("Memory extent: maddr %16"PRIxMADDR" length %16"PRIx64" vaddr %16"PRIxVADDR" offset %16"PRIx64"\n",
+		mext->maddr, mext->length, mext->vaddr, mext->offset);
 	dump->nr_machine_memory++;
 
 	return 0;

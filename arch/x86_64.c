@@ -156,6 +156,7 @@ static int x86_64_parse_prstatus(void *_prs, struct cpu_state *cpu)
 	cpu->x86_regs.fs	 	= prs->pr_reg[PR_REG_fs];
 	cpu->x86_regs.gs 		= prs->pr_reg[PR_REG_gs];
 
+	debug("ip: 0x%"PRIxVADDR" sp: 0x%"PRIxVADDR"\n", cpu->x86_regs.rip, cpu->x86_regs.rip);
 	return 0;
 }
 
@@ -178,6 +179,9 @@ static int x86_64_parse_crash_regs(void *_cr, struct cpu_state *cpu)
 	cpu->x86_crs.cr[3] = cr->cr3;
 	cpu->x86_crs.cr[4] = cr->cr4;
 
+	debug("cr0: %08"PRIxVADDR" cr2: %08"PRIxVADDR" cr3: %08"PRIxVADDR" cr4: %08"PRIxVADDR"\n",
+			cpu->x86_crs.cr[0], cpu->x86_crs.cr[2], cpu->x86_crs.cr[3], cpu->x86_crs.cr[4]);
+
 	if (have_required_symbols)
 	{
 		/* Read current struct vcpu pointer from base of Xen stack */
@@ -188,6 +192,8 @@ static int x86_64_parse_crash_regs(void *_cr, struct cpu_state *cpu)
 		cpu->nr = kdump_read_uint32_vaddr_cpu(cpu, current+CPUINFO_processor_id);
 		cpu->physical.v_current =
 			kdump_read_pointer_vaddr_cpu(cpu, current+CPUINFO_current_vcpu);
+
+		debug("cpu number %d physical.v_current %"PRIxVADDR"\n", cpu->nr, cpu->physical.v_current);
 
 		if (symtab_lookup_address(dump->symtab, cpu->x86_regs.rip) == __context_switch_symbol)
 			cpu->flags |= CPU_CONTEXT_SWITCH;
@@ -210,6 +216,8 @@ static int x86_64_parse_vcpu(struct cpu_state *cpu, vaddr_t vcpu_info)
 	struct cpu_state *pcpu;
 
 	ASSERT_REQUIRED_SYMBOLS(1);
+
+	debug("vcpu_info vaddr %"PRIxVADDR"\n", vcpu_info);
 
 	cpu->flags &= ~CPU_PHYSICAL;
 	cpu->flags |= CPU_CORE_STATE;
@@ -239,6 +247,7 @@ static int x86_64_parse_vcpu(struct cpu_state *cpu, vaddr_t vcpu_info)
 	    (pcpu->flags & CPU_CONTEXT_SWITCH) == 0)
 	{
 		int i;
+		debug("vcpu %d state from pcpu %d stack\n", cpu->nr, pcpu->nr);
 
 		/*
                  * Current points to the currently running vcpu. This
@@ -274,6 +283,7 @@ static int x86_64_parse_vcpu(struct cpu_state *cpu, vaddr_t vcpu_info)
                  * vcpu but print a warning that the true state may
                  * actually be on the pcpu stack.
 		 */
+		debug("vcpu %d state from vcpu_info\n", cpu->nr);
 		if ((pcpu->physical.v_curr_vcpu == vcpu_info ||
 		     pcpu->physical.v_current == vcpu_info) &&
 		    (pcpu->flags & CPU_CONTEXT_SWITCH))
@@ -303,8 +313,8 @@ static int x86_64_parse_vcpu(struct cpu_state *cpu, vaddr_t vcpu_info)
 	cpu->x86_regs.gs = user_regs.gs;
 	cpu->x86_regs.ss = user_regs.ss;
 	cpu->x86_regs.cs = user_regs.cs;
-	debug("%s user_regs.eflags %#" PRIx64 "\n", __FUNCTION__, user_regs.eflags);
 
+	debug("ip: 0x%"PRIxVADDR" sp: 0x%"PRIxVADDR"\n", cpu->x86_regs.rip, cpu->x86_regs.rip);
 	return 0;
 }
 
@@ -327,6 +337,7 @@ static int x86_64_parse_hypervisor(void *note)
 	if (x->xen_compile_time)
 		dump->xen_compile_time  = kdump_read_string_maddr(x->xen_compile_time);
 
+	debug("Xen version %d.%d.%d\n", dump->xen_major_version, dump->xen_minor_version, dump->xen_extra_version);
 	return 0;
 
 }
@@ -487,7 +498,7 @@ static maddr_t x86_64_virt_to_mach(struct cpu_state *cpu, uint64_t virt)
 	if (virt < page_offset) {
 		debug("cannot translate address %"PRIxVADDR" < %"PRIxVADDR" "
 			"without cr3\n", virt, page_offset);
-		return 0ULL;
+		return (maddr_t)-1ULL;
 	}
 	return virt - page_offset;
 }

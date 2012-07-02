@@ -135,7 +135,9 @@ static int parse_domain(vaddr_t domain, int nr_symtabs, const char **symtabs)
 			return 1;
 		}
 		vcpu = &d->vcpus[d->nr_vcpus-1];
-		if (vcpu_info && kdump_parse_vcpu(vcpu, vcpu_info))
+
+		debug("Domain %d parsing vcpu %d\n",d->domid, d->nr_vcpus - 1);
+		if (kdump_parse_vcpu(vcpu, vcpu_info))
 		{
 			debug("failed to parse DOM%d VCPU%d\n",
 				d->domid, vcpu->nr);
@@ -181,7 +183,7 @@ static int parse_domain(vaddr_t domain, int nr_symtabs, const char **symtabs)
 		} else {
 			d->high_memory = kdump_read_uint64_vaddr(d, high_memory_s->address);
 		}
-		debug("Symbol high_memory fount %#" PRIxVADDR "\n", d->high_memory);
+		debug("Symbol high_memory found %#" PRIxVADDR "\n", d->high_memory);
 	}
 
 	if (kdump_parse_guest_cpus(d))

@@ -110,7 +110,7 @@ extern size_t kdump_read_vaddr_cpu(struct cpu_state *cpu,
 {
 	maddr_t maddr = kdump_virt_to_mach(cpu, vaddr);
 
-	if (maddr == -1ULL)
+	if (maddr == (maddr_t)-1ULL)
 		return 0;
 
 	return kdump_read_maddr(maddr, buf, size);
