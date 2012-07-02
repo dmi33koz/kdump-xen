@@ -54,9 +54,6 @@ size_t kdump_read_maddr(maddr_t maddr, void *buf, size_t size)
 	maddr_t mfn;
 	int i;
 
-	if (maddr >> PAGE_SHIFT != (maddr + size - 1) >> PAGE_SHIFT) {
-		debug("Warning: reading across page boundary maddr %#" PRIxMADDR " size %Zd\n", maddr, size);
-	}
 	if (!cache_initialized) {
 		init_cache();
 		cache_initialized = 1;
@@ -67,6 +64,7 @@ size_t kdump_read_maddr(maddr_t maddr, void *buf, size_t size)
 		return 0;
 
 	if (((maddr & (PAGE_SIZE - 1)) + size)  > PAGE_SIZE) {
+		debug("Warning: reading across page boundary maddr %#" PRIxMADDR " size %Zd\n", maddr, size);
 
 		offset = maddr - mext->maddr + mext->offset;
 
