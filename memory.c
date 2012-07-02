@@ -105,16 +105,33 @@ size_t kdump_read_maddr(maddr_t maddr, void *buf, size_t size)
 	return size;
 }
 
-extern size_t kdump_read_vaddr_cpu(struct cpu_state *cpu,
-				   vaddr_t vaddr, void *buf, size_t size)
-{
-	maddr_t maddr = kdump_virt_to_mach(cpu, vaddr);
+extern size_t kdump_read_vaddr_cpu(struct cpu_state *cpu, vaddr_t vaddr_in, void *buf, size_t size_in) {
+	vaddr_t vaddr;
+	size_t size, ret;
+	size_t offset = 0;
 
-	if (maddr == (maddr_t)-1ULL)
-		return 0;
+	// contiguous vaddr doesn't map to contiguous maddr.
+	// we need read vaddr page by page
 
-	return kdump_read_maddr(maddr, buf, size);
+	while (offset < size_in) {
+		vaddr = vaddr_in + offset;
+		maddr_t maddr = kdump_virt_to_mach(cpu, vaddr);
+		if (maddr == -1ULL)
+			break;
+
+		size = PAGE_SIZE - (vaddr & (PAGE_SIZE - 1));
+		if (size > size_in - offset)
+			size = size_in - offset;
+
+		ret = kdump_read_maddr(maddr, buf + offset, size);
+		offset += ret;
+		if (ret != size)
+			break;
+	}
+
+	return offset;
 }
+
 
 /* Read a pfn sized value from a machine address */
 pfn_t kdump_read_pfn_maddr(struct domain *dom, maddr_t maddr)
