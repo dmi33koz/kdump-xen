@@ -19,7 +19,7 @@ static struct memory_extent *locate_maddr(maddr_t maddr)
 		if (mext->maddr <= maddr && maddr < mext->maddr+mext->length)
 			return mext;
 	}
-	fprintf(debug, "could not locate machine address extent containing %"PRIxMADDR"\n",
+	debug("could not locate machine address extent containing %"PRIxMADDR"\n",
 		maddr);
 
 	return NULL;
@@ -69,7 +69,7 @@ size_t kdump_read_maddr(maddr_t maddr, void *buf, size_t size)
 		offset = maddr - mext->maddr + mext->offset;
 
 		if (lseek64(dump->fd, offset, SEEK_SET) != offset) {
-			fprintf(debug, "failed to seek to %"PRIx64"\n", offset);
+			debug("failed to seek to %"PRIx64"\n", offset);
 			return 0;
 		}
 		return read(dump->fd, buf, size);
@@ -91,7 +91,7 @@ size_t kdump_read_maddr(maddr_t maddr, void *buf, size_t size)
 	offset = (mfn << PAGE_SHIFT) - mext->maddr + mext->offset;
 
 	if (lseek64(dump->fd, offset, SEEK_SET) != offset) {
-		fprintf(debug, "failed to seek to %"PRIx64"\n", offset);
+		debug("failed to seek to %"PRIx64"\n", offset);
 		return 0;
 	}
 	if (read(dump->fd, dump_cache[least_used].buf, PAGE_SIZE) != PAGE_SIZE) {
@@ -124,7 +124,7 @@ pfn_t kdump_read_pfn_maddr(struct domain *dom, maddr_t maddr)
 
 	if (kdump_read_maddr(maddr, &ptr, sz_pfn) != sz_pfn)
 	{
-		fprintf(debug, "failed read pfn\n");
+		debug("failed read pfn\n");
 		return 0;
 	}
 
@@ -145,7 +145,7 @@ vaddr_t kdump_read_pointer_maddr(maddr_t maddr)
 
 	if (kdump_read_maddr(maddr, &ptr, sz_ptr) != sz_ptr)
 	{
-		fprintf(debug, "failed read pointer\n");
+		debug("failed read pointer\n");
 		return 0;
 	}
 
@@ -175,7 +175,7 @@ char *kdump_read_string_maddr(maddr_t maddr)
 	offset = maddr - mext->maddr + mext->offset;
 	lim = mext->maddr + mext->length - maddr;
 	if (lseek64(dump->fd, offset, SEEK_SET) != offset) {
-		fprintf(debug, "failed to seek to %"PRIx64"\n", offset);
+		debug("failed to seek to %"PRIx64"\n", offset);
 		return NULL;
 	}
 
@@ -198,7 +198,7 @@ char *kdump_read_string_maddr(maddr_t maddr)
 		if (err < newlen)
 			newlen = err;
 
-		//fprintf(debug, "read %d bytes with strlen %d\n", err, newlen);
+		//debug("read %d bytes with strlen %d\n", err, newlen);
 
 		tmp = realloc(str,len+newlen);
 		if (tmp == NULL)
@@ -223,7 +223,7 @@ uint8_t kdump_read_uint8_maddr(maddr_t maddr)
 
 	if (kdump_read_maddr(maddr, &res, sizeof(uint8_t)) != sizeof(uint8_t))
 	{
-		fprintf(debug, "failed read uint8_t\n");
+		debug("failed read uint8_t\n");
 		return 0;
 	}
 	return res;
@@ -240,7 +240,7 @@ uint16_t kdump_read_uint16_maddr(maddr_t maddr)
 
 	if (kdump_read_maddr(maddr, &res, sizeof(uint16_t)) != sizeof(uint16_t))
 	{
-		fprintf(debug, "failed read uint16_t\n");
+		debug("failed read uint16_t\n");
 		return 0;
 	}
 	return res;
@@ -257,7 +257,7 @@ uint32_t kdump_read_uint32_maddr(maddr_t maddr)
 
 	if (kdump_read_maddr(maddr, &res, sizeof(uint32_t)) != sizeof(uint32_t))
 	{
-		fprintf(debug, "failed read uint32_t\n");
+		debug("failed read uint32_t\n");
 		return 0;
 	}
 	return res;
@@ -274,7 +274,7 @@ uint64_t kdump_read_uint64_maddr(maddr_t maddr)
 
 	if (kdump_read_maddr(maddr, &res, sizeof(uint64_t)) != sizeof(uint64_t))
 	{
-		fprintf(debug, "failed read uint64_t\n");
+		debug("failed read uint64_t\n");
 		return 0;
 	}
 	return res;

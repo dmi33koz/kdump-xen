@@ -66,10 +66,10 @@ static void bitness_init() {
 
 	sym = symtab_lookup_name(dump->symtab, "xen_phys_start");
 	if (!sym) {
-		fprintf(debug, "Error Symbol not found xen_phys_start\n");
+		debug("Error Symbol not found xen_phys_start\n");
 	} else {
 		xen_phys_start = kdump_read_uint64_vaddr(NULL, sym->address);
-		fprintf(debug, "xen_phys_start = %#" PRIxMADDR "\n", xen_phys_start);
+		debug("xen_phys_start = %#" PRIxMADDR "\n", xen_phys_start);
 	}
 }
 
@@ -90,7 +90,7 @@ mem_range_t * FN(get_page_ranges_xen)() {
 
 	bitness_init(dump);
 
-	fprintf(debug, "dump_xen_memory_new()\n");
+	debug("dump_xen_memory_new()\n");
 
 	fprintf(output, "  XEN_virt_start: %016"PRIxMADDR" XEN_page_offset: %016"PRIxMADDR"\n", XEN_virt_start, XEN_page_offset);
 	fprintf(output, "  xen_phys_start: %016"PRIxMADDR"\n", xen_phys_start);
@@ -101,7 +101,7 @@ mem_range_t * FN(get_page_ranges_xen)() {
 		goto return_error;
 	}
 	max_page = kdump_read_uint64_vaddr(NULL, sym->address);
-	fprintf(debug, "max_page: %016"PRIxMADDR"\n", max_page);
+	debug("max_page: %016"PRIxMADDR"\n", max_page);
 
 	// get mfn_start
 	sym = symtab_lookup_name(dump->symtab, "_start");
@@ -111,7 +111,7 @@ mem_range_t * FN(get_page_ranges_xen)() {
 	}
 
 	mfn_start = kdump_virt_to_mach(&dump->cpus[0], sym->address) >> PAGE_SHIFT;
-	fprintf(debug, "mfn_start: = %016"PRIxMADDR"\n", mfn_start);
+	debug("mfn_start: = %016"PRIxMADDR"\n", mfn_start);
 
 	// get mfn_end
 	sym = symtab_lookup_name(dump->symtab, "_end");
@@ -120,12 +120,12 @@ mem_range_t * FN(get_page_ranges_xen)() {
 		goto return_error;
 	}
 	mfn_end = kdump_virt_to_mach(&dump->cpus[0], sym->address) >> PAGE_SHIFT;
-	fprintf(debug, "mfn_end =  %#" PRIxMADDR "\n", mfn_end);
+	debug("mfn_end =  %#" PRIxMADDR "\n", mfn_end);
 
 	// frame table is defined as
 	// struct page_info *frame_table
 	frame_table = kdump_read_uint64_vaddr(NULL, dump->frame_table);
-	fprintf(debug, "frame_table = 0x%016" PRIx64 "\n", frame_table);
+	debug("frame_table = 0x%016" PRIx64 "\n", frame_table);
 
 	for (mfn = 0; mfn < max_page; mfn++) {
 		if ((mfn * dump->sizeof_page_info) % PAGE_SIZE == 0) {
@@ -167,22 +167,22 @@ mem_range_t * FN(get_page_ranges_xen)() {
 			text_state = "offlined ";
 		}
 		xen_page_count++;
-		fprintf(debug, "mfn = %#lx count_info = 0x%016" PRIx64 " state %s %s\n", mfn, *count_info_p, text_state, (*count_info_p
+		debug("mfn = %#lx count_info = 0x%016" PRIx64 " state %s %s\n", mfn, *count_info_p, text_state, (*count_info_p
 				& PGC_xen_heap) ? "Xen" : "");
 		count_info_p = (uint64_t*) (buffer + (mfn * dump->sizeof_page_info) % PAGE_SIZE);
-		fprintf(debug, "word = 0x%016" PRIx64 "\n", *count_info_p);
+		debug("word = 0x%016" PRIx64 "\n", *count_info_p);
 		count_info_p++;
-		fprintf(debug, "word = 0x%016" PRIx64 "\n", *count_info_p);
+		debug("word = 0x%016" PRIx64 "\n", *count_info_p);
 		count_info_p++;
-		fprintf(debug, "word = 0x%016" PRIx64 "\n", *count_info_p);
+		debug("word = 0x%016" PRIx64 "\n", *count_info_p);
 		count_info_p++;
-		fprintf(debug, "word = 0x%016" PRIx64 "\n", *count_info_p);
+		debug("word = 0x%016" PRIx64 "\n", *count_info_p);
 		count_info_p++;
 	}
-	fprintf(debug, "xen_page_cont = %ld total mem = %ld\n", xen_page_count, xen_page_count << PAGE_SHIFT);
+	debug("xen_page_cont = %ld total mem = %ld\n", xen_page_count, xen_page_count << PAGE_SHIFT);
 	mr = mr_first;
 	while (mr) {
-		fprintf(debug, "=== XEN mem range mfn 0x%" PRIx64 " - 0x%" PRIx64 " pages %" PRIu64 " ===\n", mr->mfn, mr->mfn + mr->page_count,
+		debug("=== XEN mem range mfn 0x%" PRIx64 " - 0x%" PRIx64 " pages %" PRIu64 " ===\n", mr->mfn, mr->mfn + mr->page_count,
 				mr->page_count);
 		mr = mr->next;
 	}

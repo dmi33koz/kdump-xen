@@ -161,7 +161,7 @@ static int x86_64_parse_prstatus(void *_prs, struct cpu_state *cpu)
 
 int x86_64_set_prstatus(struct domain *d, void *_prs, struct cpu_state *cpu)
 {
-	fprintf(debug, "%s function not implemented.\n", __FUNCTION__);
+	debug("%s function not implemented.\n", __FUNCTION__);
 	exit(-1);
 	return 0;
 }
@@ -303,7 +303,7 @@ static int x86_64_parse_vcpu(struct cpu_state *cpu, vaddr_t vcpu_info)
 	cpu->x86_regs.gs = user_regs.gs;
 	cpu->x86_regs.ss = user_regs.ss;
 	cpu->x86_regs.cs = user_regs.cs;
-	fprintf(debug, "%s user_regs.eflags %#" PRIx64 "\n", __FUNCTION__, user_regs.eflags);
+	debug("%s user_regs.eflags %#" PRIx64 "\n", __FUNCTION__, user_regs.eflags);
 
 	return 0;
 }
@@ -485,7 +485,7 @@ static maddr_t x86_64_virt_to_mach(struct cpu_state *cpu, uint64_t virt)
  page_offset:
 	/* Fall back to using PAGE_OFFSET if possible */
 	if (virt < page_offset) {
-		fprintf(debug, "cannot translate address %"PRIxVADDR" < %"PRIxVADDR" "
+		debug("cannot translate address %"PRIxVADDR" < %"PRIxVADDR" "
 			"without cr3\n", virt, page_offset);
 		return 0ULL;
 	}

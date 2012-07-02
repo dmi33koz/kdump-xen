@@ -104,24 +104,24 @@ void open_dump(const char *fn, struct symbol_table *xen_symtab,
 
 	fd = open(fn, O_RDONLY|O_LARGEFILE);
 	if (fd == -1) {
-		fprintf(debug, "failed to open %s: %s\n", fn, strerror(errno));
+		debug("failed to open %s: %s\n", fn, strerror(errno));
 		return;
 	}
 
 	i = read(fd, ident, EI_NIDENT);
 	if (i != EI_NIDENT) {
-		fprintf(debug, "failed to read elf header: %s\n", strerror(errno));
+		debug("failed to read elf header: %s\n", strerror(errno));
 		return;
 	}
 
 	if (!is_elf(ident)) {
-		fprintf(debug, "not an elf file\n");
+		debug("not an elf file\n");
 		return;
 	}
 
 	dump = malloc(sizeof(*dump));
 	if (dump == NULL) {
-		fprintf(debug, "out of memory");
+		debug("out of memory");
 		return;
 	}
 	memset(dump, 0, sizeof(*dump));
@@ -133,8 +133,8 @@ void open_dump(const char *fn, struct symbol_table *xen_symtab,
 	case ELFCLASS32:
 		if (parse_dump(dump))
 		{
-			fprintf(debug,  "Error 32 bit ELF dumps are not supported.\n");
-			fprintf(debug,  "Use kexec with --elf64-core-headers parameter.\n");
+			debug( "Error 32 bit ELF dumps are not supported.\n");
+			debug( "Use kexec with --elf64-core-headers parameter.\n");
 			fprintf(stderr, "Error 32 bit ELF dumps are not supported.\n");
 			fprintf(stderr, "Use kexec with --elf64-core-headers parameter.\n");
 			goto out_err;
@@ -143,13 +143,13 @@ void open_dump(const char *fn, struct symbol_table *xen_symtab,
 	case ELFCLASS64:
 		if (parse_dump(dump))
 		{
-			fprintf(debug, "failed to parse 64 bit dump\n");
+			debug("failed to parse 64 bit dump\n");
 			goto out_err;
 		}
 		break;
 	case ELFCLASSNONE:
 	default:
-		fprintf(debug, "invalid ELF class: %d\n", ident[EI_CLASS]);
+		debug("invalid ELF class: %d\n", ident[EI_CLASS]);
 		goto out_err;
 
 	}
@@ -169,33 +169,33 @@ void open_dump(const char *fn, struct symbol_table *xen_symtab,
 	return;
 }
 
-void hex_dump(int offset, void *ptr, int size) {
+void __hex_dump(const char *file, const char *function, int line, int offset, void *ptr, int size) {
 	char *data = ptr;
 	int mask = 15;
 	int i = 0;
 	int c = 0;
-	fprintf(debug, " ------------------ \n");
-	fprintf(debug, "  %08x:", offset & ~mask);
+	fprintf(debug_file, "%s:%d %s() hex_dump:\n", file, line, function);
+	fprintf(debug_file, "  %08x:", offset & ~mask);
 	if (offset & mask) {
 		for (i = 0; i < (offset & mask); i++) {
-			fprintf(debug, "   ");
+			fprintf(debug_file, "   ");
 		}
 	}
 	for (c = 0; c < size; c++) {
 		if ((i != 0) && ((i & mask) == 0)) {
-			fprintf(debug, "\n  %08x:", offset + c);
+			fprintf(debug_file, "\n  %08x:", offset + c);
 		}
-		fprintf(debug, " %02x", (unsigned char) data[c]);
+		fprintf(debug_file, " %02x", (unsigned char) data[c]);
 		i++;
 	}
-	fprintf(debug, "\n");
+	fprintf(debug_file, "\n");
 }
 
 mem_range_t * alloc_mem_range(void) {
 	mem_range_t * mr;
 	mr = malloc(sizeof(mem_range_t));
 	if (!mr) {
-		fprintf(debug, "Error unable to allocate mem_range_t\n");
+		debug("Error unable to allocate mem_range_t\n");
 		exit(-1);
 	}
 	memset(mr, '\0', sizeof(mem_range_t));

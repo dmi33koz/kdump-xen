@@ -42,7 +42,7 @@ extern int have_required_symbols;
 #define ASSERT_REQUIRED_SYMBOLS(__ret__) \
 if (!have_required_symbols) \
 { \
-	fprintf(debug, "ERROR: attempt to access unavailable symbols %s:%d\n", __FILE__, __LINE__); \
+	debug("ERROR: attempt to access unavailable symbols %s:%d\n", __FILE__, __LINE__); \
 	return __ret__; \
 }
 

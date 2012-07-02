@@ -157,7 +157,7 @@ int x86_32_set_prstatus(struct domain *d, void *_prs, struct cpu_state *cpu) {
 	prs->pr_reg[16] = cpu->x86_regs.ss;
 	prs->pr_pid = cpu->pr_pid;
 
-	fprintf(debug, "cpu registers:\n");
+	debug("cpu registers:\n");
 	//hex_dump(0, prs->pr_reg, 4 * 17);
 
 	return sizeof(ELF_Prstatus);
@@ -192,20 +192,20 @@ int x86_32_get_vmalloc_extents(struct domain *d, struct cpu_state *cpu, struct m
 
 	vmlist_s = symtab_lookup_name(d->symtab, "vmlist");
 	if (!vmlist_s) {
-		fprintf(debug, "Error Symbol not found vmlist\n");
+		debug("Error Symbol not found vmlist\n");
 		goto err;
 	}
 	ve_addr = kdump_read_uint32_vaddr(d, vmlist_s->address);
 
 	while (ve_addr) {
 		if (kdump_read_vaddr(NULL, ve_addr, &ve, sizeof(ve)) != sizeof(ve)) {
-			fprintf(debug, "vmlist entry error unavailable.");
+			debug("vmlist entry error unavailable.");
 			goto err;
 		}
 		if ((ve.flags & VM_ALLOC) && ve.nr_pages != 0) {
 			ext = realloc(ext, sizeof(struct memory_extent) * (n_ext + ve.nr_pages));
 			vaddr = (vaddr_t) (uint32_t) ve.addr;
-			fprintf(debug, "vmlist addr %#" PRIxVADDR " === next %#x addr %#x flags %#x nr_pages %#x \n", ve_addr, ve.next, ve.addr, ve.flags, ve.nr_pages);
+			debug("vmlist addr %#" PRIxVADDR " === next %#x addr %#x flags %#x nr_pages %#x \n", ve_addr, ve.next, ve.addr, ve.flags, ve.nr_pages);
 			// for every page of vmalloc area find machine address and fill extents
 			for (n = 0; n < ve.nr_pages; n++) {
 				vaddr = (vaddr_t) (uint32_t) ve.addr + (n << PAGE_SHIFT);
@@ -248,8 +248,8 @@ int x86_32_get_vmalloc_extents(struct domain *d, struct cpu_state *cpu, struct m
 	ext = realloc(ext, sizeof(struct memory_extent) * n_ext);
 
 	extern int cache_hits;
-	fprintf(debug, "     n_ext %d\n", n_ext);
-	fprintf(debug, "     cache_hits %d\n", cache_hits);
+	debug("     n_ext %d\n", n_ext);
+	debug("     cache_hits %d\n", cache_hits);
 	*extents_out = ext;
 	return n_ext;
 	err: if (ext) {
@@ -280,25 +280,25 @@ int x86_32_parse_guest_cpus(struct domain *d) {
 	sname = "crash_notes";
 	sym = symtab_lookup_name(d->symtab, sname);
 	if (!sym) {
-		fprintf(debug, "Error Symbol not found: %s\n", sname);
+		debug("Error Symbol not found: %s\n", sname);
 		goto err;
 	}
 	crash_notes = kdump_read_uint32_vaddr(d, sym->address);
 
-	fprintf(debug, "crash_notes: %#" PRIxVADDR "\n", crash_notes);
+	debug("crash_notes: %#" PRIxVADDR "\n", crash_notes);
 
 	// find __per_cpu_offset
 	sname = "__per_cpu_offset";
 	sym = symtab_lookup_name(d->symtab, sname);
 	if (!sym) {
-		fprintf(debug, "Error Symbol not found: %s\n", sname);
+		debug("Error Symbol not found: %s\n", sname);
 		goto err;
 	}
 
 	for (c = 0; c < d->nr_vcpus; c++) {
 		cpu_offset = kdump_read_uint32_vaddr(d, sym->address + 4 * c);
 		cpu_note = crash_notes + cpu_offset;
-		fprintf(debug, "cpu %d cpu_offset: %#" PRIxVADDR " cpu_note %#" PRIxVADDR "\n", c, cpu_offset, cpu_note);
+		debug("cpu %d cpu_offset: %#" PRIxVADDR " cpu_note %#" PRIxVADDR "\n", c, cpu_offset, cpu_note);
 		if (parse_crash_note(d, cpu_note, &d->guest_cpus[c])) {
 			continue;
 		}
@@ -310,7 +310,7 @@ int x86_32_parse_guest_cpus(struct domain *d) {
 		memcpy(&d->guest_cpus[c], &tmp_cpu, sizeof(tmp_cpu));
 
 		d->guest_cpus[c].valid = 1;
-		fprintf(debug, "cpu %d crashnote OK\n", c);
+		debug("cpu %d crashnote OK\n", c);
 	}
 	return 0;
 
@@ -448,7 +448,7 @@ static int x86_32_parse_vcpu(struct cpu_state *cpu, vaddr_t vcpu_info)
 	cpu->x86_regs.gs = user_regs.gs;
 	cpu->x86_regs.ss = user_regs.ss;
 	cpu->x86_regs.cs = user_regs.cs;
-	fprintf(debug, "%s user_regs.eflags 0x%x\n", __FUNCTION__, user_regs.eflags);
+	debug("%s user_regs.eflags 0x%x\n", __FUNCTION__, user_regs.eflags);
 
 	return 0;
 }
@@ -612,7 +612,7 @@ static maddr_t x86_32_virt_to_mach(struct cpu_state *cpu, vaddr_t virt)
 	/* always use host paging level... */
 	int paging_levels = dump->cpus[0].x86_crs.cr[4] & CR4_PAE ? 3 : 2;
 
-	fprintf(debug, "translate address %"PRIxVADDR" %x %lx %d\n",
+	debug("translate address %"PRIxVADDR" %x %lx %d\n",
 		virt, (uint32_t)cpu->x86_crs.cr[3], cpu->flags&CPU_EXTD_STATE,
 		(cpu->flags&CPU_EXTD_STATE) && (uint32_t)cpu->x86_crs.cr[3]);
 
@@ -631,7 +631,7 @@ static maddr_t x86_32_virt_to_mach(struct cpu_state *cpu, vaddr_t virt)
  page_offset:
 	/* Fall back to using PAGE_OFFSET if possible */
 	if (virt < page_offset) {
-		fprintf(debug, "cannot translate address %"PRIxVADDR" < %"PRIxVADDR" "
+		debug("cannot translate address %"PRIxVADDR" < %"PRIxVADDR" "
 			"without cr3\n", virt, page_offset);
 		return -1ULL;
 	}

@@ -12,11 +12,11 @@ int x86_virt_to_mach(maddr_t cr3, int paging_levels, vaddr_t vaddr, maddr_t *mad
 	maddr_t pt;
 	maddr_t page;
 
-	//fprintf(debug, "translating %"PRIxVADDR" with CR3 %"PRIx64" and %d levels of page table\n", vaddr, cr3, paging_levels);
+	//debug("translating %"PRIxVADDR" with CR3 %"PRIx64" and %d levels of page table\n", vaddr, cr3, paging_levels);
 
 	if (paging_levels == 2)
 	{
-		fprintf(debug, "TODO: 2 level page table translation\n");
+		debug("TODO: 2 level page table translation\n");
 		return 1;
 	}
 
@@ -27,8 +27,8 @@ int x86_virt_to_mach(maddr_t cr3, int paging_levels, vaddr_t vaddr, maddr_t *mad
 		pml4e = kdump_read_uint64_maddr(cr3 + 8*offset);
 		if (!(pml4e&1)) /* Not present */
 		{
-			fprintf(debug, "PML4 @ %"PRIx64"\n", cr3);
-			fprintf(debug, "PML4[%"PRIxMADDR"] @ %"PRIxMADDR" = %"PRIx64" not present\n",
+			debug("PML4 @ %"PRIx64"\n", cr3);
+			debug("PML4[%"PRIxMADDR"] @ %"PRIxMADDR" = %"PRIx64" not present\n",
 				offset, cr3 + 8*offset, pml4e);
 			return 1;
 		}
@@ -54,8 +54,8 @@ int x86_virt_to_mach(maddr_t cr3, int paging_levels, vaddr_t vaddr, maddr_t *mad
 
 		if (!(pdpe&1)) /* Not present */
 		{
-			fprintf(debug, "PDP @ %"PRIxMADDR"\n", pdp);
-			fprintf(debug, "PDP[%"PRIxMADDR"] @ %"PRIxMADDR" = %"PRIx64" not present\n",
+			debug("PDP @ %"PRIxMADDR"\n", pdp);
+			debug("PDP[%"PRIxMADDR"] @ %"PRIxMADDR" = %"PRIx64" not present\n",
 				offset,
 				pdp + 8*offset,
 				pdpe);
@@ -77,8 +77,8 @@ int x86_virt_to_mach(maddr_t cr3, int paging_levels, vaddr_t vaddr, maddr_t *mad
 
 		if (!(pde&1)) /* Not present */
 		{
-			fprintf(debug, "PD @ %"PRIxMADDR"\n", pd);
-			fprintf(debug, "PD[%"PRIxMADDR"] @ %"PRIxMADDR" = %"PRIx64" not present\n",
+			debug("PD @ %"PRIxMADDR"\n", pd);
+			debug("PD[%"PRIxMADDR"] @ %"PRIxMADDR" = %"PRIx64" not present\n",
 				offset,
 				pd + 8*offset,
 				pde);
@@ -88,7 +88,7 @@ int x86_virt_to_mach(maddr_t cr3, int paging_levels, vaddr_t vaddr, maddr_t *mad
 
 		if (pde&0x80ULL) /* 2M page */
 		{
-			//fprintf(debug, "2M mapping\n");
+			//debug("2M mapping\n");
 			page = pde & 0x0000000FFFF00000ULL;
 			*maddr = page | (vaddr&((1<<21)-1));
 			goto done;
@@ -111,8 +111,8 @@ int x86_virt_to_mach(maddr_t cr3, int paging_levels, vaddr_t vaddr, maddr_t *mad
 
 		if (!(pte&1)) /* Not present */
 		{
-			fprintf(debug, "PT @ %"PRIxMADDR"\n", pt);
-			fprintf(debug, "PT[%"PRIxMADDR"] @ %"PRIxMADDR" = %"PRIx64" not present\n",
+			debug("PT @ %"PRIxMADDR"\n", pt);
+			debug("PT[%"PRIxMADDR"] @ %"PRIxMADDR" = %"PRIx64" not present\n",
 				offset,
 				pt + 8*offset,
 				pte);
@@ -125,9 +125,9 @@ int x86_virt_to_mach(maddr_t cr3, int paging_levels, vaddr_t vaddr, maddr_t *mad
 	}
 
  done:
-	//fprintf(debug, "PAGE %"PRIxMADDR"\n", page);
+	//debug("PAGE %"PRIxMADDR"\n", page);
 
-	//fprintf(debug, "MADDR %"PRIxMADDR"\n", *maddr);
+	//debug("MADDR %"PRIxMADDR"\n", *maddr);
 
 	return 0;
 }

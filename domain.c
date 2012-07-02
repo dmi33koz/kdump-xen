@@ -91,13 +91,13 @@ static int parse_domain(vaddr_t domain, int nr_symtabs, const char **symtabs)
 
 	if (kdump_read_vaddr(NULL, domain, tmp, DOMAIN_sizeof) != DOMAIN_sizeof)
 	{
-		fprintf(debug, "Failed to read domain info\n");
+		debug("Failed to read domain info\n");
 		return 1;
 	}
 
 	if (allocate_domains(dump->nr_domains+1))
 	{
-		fprintf(debug, "failed to allocate memory for domain\n");
+		debug("failed to allocate memory for domain\n");
 		return 1;
 	}
 
@@ -130,14 +130,14 @@ static int parse_domain(vaddr_t domain, int nr_symtabs, const char **symtabs)
 
 		if (allocate_vcpus(d, d->nr_vcpus+1))
 		{
-			fprintf(debug, "failed to allocate memory for DOM%d VCPU%d\n",
+			debug("failed to allocate memory for DOM%d VCPU%d\n",
 				d->domid, d->nr_vcpus+1);
 			return 1;
 		}
 		vcpu = &d->vcpus[d->nr_vcpus-1];
 		if (vcpu_info && kdump_parse_vcpu(vcpu, vcpu_info))
 		{
-			fprintf(debug, "failed to parse DOM%d VCPU%d\n",
+			debug("failed to parse DOM%d VCPU%d\n",
 				d->domid, vcpu->nr);
 			return 1;
 		}
@@ -164,7 +164,7 @@ static int parse_domain(vaddr_t domain, int nr_symtabs, const char **symtabs)
 	{
 		d->symtab = symtab_parse(symtabs[d->domid], d->domid);
 		if (d->symtab == NULL)
-			fprintf(debug, "Failed to parse symbol table for domain %d = %s.\n",
+			debug("Failed to parse symbol table for domain %d = %s.\n",
 				d->domid, symtabs[d->domid]);
 		else
 			fprintf(output, "Domain %d symbol table: %s\n", d->domid, symtabs[d->domid]);
@@ -174,19 +174,19 @@ static int parse_domain(vaddr_t domain, int nr_symtabs, const char **symtabs)
 	}
 	high_memory_s = symtab_lookup_name(d->symtab, "high_memory");
 	if (!high_memory_s) {
-		fprintf(debug, "Error Symbol not found high_memory\n");
+		debug("Error Symbol not found high_memory\n");
 	} else {
 		if (d->has_32bit_shinfo) {
 			d->high_memory = kdump_read_uint32_vaddr(d, high_memory_s->address);
 		} else {
 			d->high_memory = kdump_read_uint64_vaddr(d, high_memory_s->address);
 		}
-		fprintf(debug, "Symbol high_memory fount %#" PRIxVADDR "\n", d->high_memory);
+		debug("Symbol high_memory fount %#" PRIxVADDR "\n", d->high_memory);
 	}
 
 	if (kdump_parse_guest_cpus(d))
 	{
-		fprintf(debug, "failed to parse DOM%d guest cpus\n",
+		debug("failed to parse DOM%d guest cpus\n",
 			d->domid);
 	}
 
@@ -208,7 +208,7 @@ int parse_domain_list(int nr_symtabs, const char **symtabs)
 	{
 		if (parse_domain(domain, nr_symtabs, symtabs))
 		{
-			fprintf(debug, "Failed to parse domain at %"PRIxVADDR"\n",
+			debug("Failed to parse domain at %"PRIxVADDR"\n",
 				domain);
 			return 1;
 		}

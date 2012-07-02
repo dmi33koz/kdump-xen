@@ -20,7 +20,7 @@
 #include "symbols.h"
 #include "bitness.h"
 
-FILE *debug, *output;
+FILE *debug_file, *output;
 struct dump *dump = NULL;
 
 struct symbol_table *xen_symtab = NULL;
@@ -110,8 +110,7 @@ static FILE *fopen_in_output_directory(const char *file, const char *mode)
 
 	if (fchdir(output_directory)<0)
 	{
-		fprintf(debug, "%s: failed to change to output directory: %s\n",
-			__FUNCTION__, strerror(errno));
+		debug("Error: failed to change to output directory: %s\n", strerror(errno));
 		return NULL;
 	}
 
@@ -119,8 +118,7 @@ static FILE *fopen_in_output_directory(const char *file, const char *mode)
 
 	if (fchdir(working_directory) < 0)
 	{
-		fprintf(debug, "%s: failed to return to working directory: %s\n",
-			__FUNCTION__, strerror(errno));
+		debug("Error: failed to return to working directory: %s\n", strerror(errno));
 	}
 
 	return f;
@@ -413,7 +411,7 @@ static void dump_domain_version_info(FILE *o, struct domain *d) {
 		maddr = kdump_virt_to_mach(&d->vcpus[0], sym->address);
 		txt = kdump_read_string_maddr(maddr);
 	} else {
-		fprintf(debug, "Error Symbol not found: %s\n", sname);
+		debug("Error Symbol not found: %s\n", sname);
 	}
 	if (txt) {
 		fprintf(o, "  %s", txt);
@@ -427,7 +425,7 @@ static void dump_domain_version_info(FILE *o, struct domain *d) {
 		maddr = kdump_virt_to_mach(&d->vcpus[0], sym->address);
 		txt = kdump_read_string_maddr(maddr);
 	} else {
-		fprintf(debug, "Error Symbol not found: %s\n", sname);
+		debug("Error Symbol not found: %s\n", sname);
 	}
 	if (txt) {
 		fprintf(o, "  %s\n", txt);
@@ -513,7 +511,7 @@ static void dump_xen_memory_new(const char *file) {
 	int elf_header_size = 0;
 	unsigned char buf[PAGE_SIZE];
 
-	fprintf(debug, "dump_xen_memory_old()\n");
+	debug("dump_xen_memory_old()\n");
 
 	mem = fopen_in_output_directory(file, "w");
 	if (mem == NULL) {
@@ -537,13 +535,13 @@ static void dump_xen_memory_new(const char *file) {
 		for (addr = mr->mfn << PAGE_SHIFT; addr < (mr->mfn + mr->page_count) << PAGE_SHIFT; addr += PAGE_SIZE) {
 			ret = kdump_read_maddr(addr, buf, PAGE_SIZE);
 			if (ret == 0) {
-				fprintf(debug, "error reading offset %"PRIxMADDR" in xen memory dump: %s\n", addr, strerror(errno));
+				debug("error reading offset %"PRIxMADDR" in xen memory dump: %s\n", addr, strerror(errno));
 				goto out;
 			}
 
 			/* Don't worry about short writes too much but exit on error. */
 			if (fwrite(buf, 1, ret, mem) < 0) {
-				fprintf(debug, "error writing to offset %"PRIxMADDR" in xen memory dump: %s\n", addr, strerror(errno));
+				debug("error writing to offset %"PRIxMADDR" in xen memory dump: %s\n", addr, strerror(errno));
 				goto out;
 			}
 		}
@@ -563,7 +561,7 @@ static void dump_xen_memory_old(const char *file)
 	FILE *mem;
 	int elf_header_size = 0;
 	
-	fprintf(debug, "dump_xen_memory_old()\n");
+	debug("dump_xen_memory_old()\n");
 
 	fprintf(output, "Xen Physical Memory:\n");
 
@@ -619,7 +617,7 @@ static void dump_xen_memory_old(const char *file)
 static void dump_xen_memory(const char *file)
 {
 	maddr_t start, end;
-	fprintf(debug, "dump_xen_memory()\n");
+	debug("dump_xen_memory()\n");
 	if (kdump_heap_limits(&start, &end) == 0) {
 		dump_xen_memory_old(file);
 		return;
@@ -1068,11 +1066,11 @@ int main(int argc, char **argv)
 		if ( options.domain_list_separate == -1 )
 			options.domain_list_separate = 1;
 
-		debug = fopen_in_output_directory("debug.log", "w");
-		if (debug == NULL)
+		debug_file = fopen_in_output_directory("debug.log", "w");
+		if (debug_file == NULL)
 		{
 			fprintf(stderr, "failed to open debug.log: %s\n", strerror(errno));
-			debug = stderr;
+			debug_file = stderr;
 		}
 	} else {
 		output_directory = working_directory;
@@ -1084,16 +1082,16 @@ int main(int argc, char **argv)
 
 		if ( opt_debug )
 		{
-			debug = stderr;
+			debug_file = stderr;
 		}
 		else
 		{
-			debug = fopen("/dev/null", "w");
-			if ( debug == NULL )
+			debug_file = fopen("/dev/null", "w");
+			if ( debug_file == NULL )
 			{
 				fprintf(stderr, "failed to redirect debugging to /dev/null: %s\n",
 					strerror(errno));
-				debug = stderr;
+				debug_file = stderr;
 			}
 		}
 	}
@@ -1103,7 +1101,7 @@ int main(int argc, char **argv)
 		xen_symtab = symtab_parse(xen_symtab_file, -1);
 
 		if (xen_symtab == NULL)
-			fprintf(debug, "Failed to parse xen symbol table %s.\n", xen_symtab_file);
+			debug("Failed to parse xen symbol table %s.\n", xen_symtab_file);
 		else
 			fprintf(output, "Xen Symbol table: %s\n", xen_symtab_file);
 	}
@@ -1175,8 +1173,8 @@ int main(int argc, char **argv)
 		close(output_directory);
 	if (output != stdout)
 		fclose(output);
-	if (debug != stderr)
-		fclose(debug);
+	if (debug_file != stderr)
+		fclose(debug_file);
 
 	return 0;
 }

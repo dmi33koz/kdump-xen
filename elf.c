@@ -230,12 +230,12 @@ static int parse_note_CORE(struct arch *arch, off64_t offset, Elf_Nhdr *note)
 		if (kdump_parse_prstatus(arch, ELFNOTE_DESC(note), &current_cpu))
 			return 1;
 
-		//fprintf(debug, "CORE PR_STATUS\n");
+		//debug("CORE PR_STATUS\n");
 
 		break;
 	}
 	default:
-		fprintf(debug, "unhandled CORE note type %d\n", note->n_type);
+		debug("unhandled CORE note type %d\n", note->n_type);
 		return 1;
 	}
 
@@ -245,7 +245,7 @@ static int parse_note_CORE(struct arch *arch, off64_t offset, Elf_Nhdr *note)
 /* Obsolete */
 static int parse_note_XEN_CORE(struct arch *arch, off64_t offset, Elf_Nhdr *note)
 {
-	fprintf(debug, "unhandled \"XEN CORE\" note type %x\n", note->n_type);
+	debug("unhandled \"XEN CORE\" note type %x\n", note->n_type);
 	return 1;
 }
 
@@ -308,11 +308,11 @@ static int parse_note_Xen(struct arch *arch, off64_t offset, Elf_Nhdr *note)
 	switch (note->n_type) {
 	case XEN_ELFNOTE_CRASH_INFO:
 
-		//fprintf(debug, "Xen ELFNOTE_CRASH_INFO\n");
+		//debug("Xen ELFNOTE_CRASH_INFO\n");
 
 		if (kdump_parse_hypervisor(ELFNOTE_DESC(note)))
 		{
-			fprintf(debug, "failed to parse hypervisor note\n");
+			debug("failed to parse hypervisor note\n");
 			return 1;
 		}
 		break;
@@ -324,7 +324,7 @@ static int parse_note_Xen(struct arch *arch, off64_t offset, Elf_Nhdr *note)
 		if (kdump_parse_crash_regs(arch, ELFNOTE_DESC(note), &current_cpu))
 			return 1;
 
-		//fprintf(debug, "Xen ELFNOTE_CRASH_REGS for CPU%d\n", current_cpu.nr);
+		//debug("Xen ELFNOTE_CRASH_REGS for CPU%d\n", current_cpu.nr);
 
 		if (allocate_cpus(current_cpu.nr+1))
 			return 1;
@@ -335,7 +335,7 @@ static int parse_note_Xen(struct arch *arch, off64_t offset, Elf_Nhdr *note)
 		break;
 	}
 	default:
-		fprintf(debug, "unhandled \"Xen\" note type %x\n", note->n_type);
+		debug("unhandled \"Xen\" note type %x\n", note->n_type);
 		return 1;
 	}
 
@@ -348,13 +348,13 @@ static int note_get_symbol_hex(char *text, char * name, uint64_t * val) {
 
 	ptr_begin = strstr(text, name);
 	if (!ptr_begin) {
-		fprintf(debug, "note string %s not found\n", name);
+		debug("note string %s not found\n", name);
 		return 1;
 	}
 	ptr_begin += strlen(name);
 
 	if (sscanf(ptr_begin, "%" PRIx64, &v) != 1) {
-		fprintf(debug, "note string %s sscanf failed\n", name);
+		debug("note string %s sscanf failed\n", name);
 		return 1;
 	}
 	*val = v;
@@ -367,13 +367,13 @@ static int note_get_symbol(char *text, char * name, uint64_t * val) {
 
 	ptr_begin = strstr(text, name);
 	if (!ptr_begin) {
-		fprintf(debug, "note string %s not found\n", name);
+		debug("note string %s not found\n", name);
 		return 1;
 	}
 	ptr_begin += strlen(name);
 
 	if (sscanf(ptr_begin, "%" PRIu64, &v) != 1) {
-		fprintf(debug, "note string %s sscanf failed\n", name);
+		debug("note string %s sscanf failed\n", name);
 		return 1;
 	}
 	*val = v;
@@ -388,9 +388,9 @@ static int parse_note_VMCOREINFO(struct arch *arch, off64_t offset, Elf_Nhdr *no
 	memcpy(text, ELFNOTE_DESC(note), note->n_descsz);
 	text[note->n_descsz] = '\0';
 
-	fprintf(debug, "parse_note_VMCOREINFO note type %x size %d len %Zd\n",
+	debug("parse_note_VMCOREINFO note type %x size %d len %Zd\n",
 			note->n_type, note->n_descsz, strlen(text));
-	fprintf(debug, ">>%s<<\n", text);
+	debug(">>%s<<\n", text);
 	free(text);
 	return 0;
 }
@@ -404,29 +404,29 @@ static int parse_note_VMCOREINFO_XEN(struct arch *arch, off64_t offset, Elf_Nhdr
 	memcpy(text, ELFNOTE_DESC(note), note->n_descsz);
 	text[note->n_descsz] = '\0';
 
-	fprintf(debug, "parse_note_VMCOREINFO_XEN note type %x size %d len %Zd\n",
+	debug("parse_note_VMCOREINFO_XEN note type %x size %d len %Zd\n",
 			note->n_type, note->n_descsz, strlen(text));
-	fprintf(debug, ">>%s<<\n", text);
+	debug(">>%s<<\n", text);
 
 	if (note_get_symbol_hex(text, "SYMBOL(frame_table)=", &val) == 0) {
 		dump->frame_table = val;
 	}
-	fprintf(debug, "frame_table = %#" PRIx64 "\n", dump->frame_table);
+	debug("frame_table = %#" PRIx64 "\n", dump->frame_table);
 
 	if (note_get_symbol(text, "SIZE(page_info)=", &val) == 0) {
 		dump->sizeof_page_info = val;
 	}
-	fprintf(debug, "sizeof_page_info = %d\n", dump->sizeof_page_info);
+	debug("sizeof_page_info = %d\n", dump->sizeof_page_info);
 
 	if (note_get_symbol(text, "OFFSET(page_info.count_info)=", &val) == 0) {
 		dump->offset_page_info_count_info = val;
 	}
-	fprintf(debug, "offset_page_info_count_info = %d\n", dump->offset_page_info_count_info);
+	debug("offset_page_info_count_info = %d\n", dump->offset_page_info_count_info);
 
 	if (note_get_symbol(text, "OFFSET(page_info._domain)=", &val) == 0) {
 		dump->offset_page_info_domain = val;
 	}
-	fprintf(debug, "offset_page_info_domain = %d\n", dump->offset_page_info_domain);
+	debug("offset_page_info_domain = %d\n", dump->offset_page_info_domain);
 
 	free(text);
 	return 0;
@@ -442,7 +442,7 @@ static int parse_pt_note(struct arch *arch, Elf64_Phdr *phdr) {
 	phdr_info_t *p_info;
 
 	if (kdump_read(notes, phdr->p_offset, phdr->p_filesz) != phdr->p_filesz) {
-		fprintf(debug, "Failed to read PT_NOTE: %s\n", strerror(errno));
+		debug("Failed to read PT_NOTE: %s\n", strerror(errno));
 		return 1;
 	}
 
@@ -451,7 +451,7 @@ static int parse_pt_note(struct arch *arch, Elf64_Phdr *phdr) {
 	for (note = (Elf_Nhdr*) notes; (void*) note < (void*) notes + phdr->p_filesz - 1; note = ELFNOTE_NEXT(note)) {
       name = ELFNOTE_NAME(note);
       size = note->n_namesz;
-		fprintf(debug, "Parsing Note entry %d type 0x%x name %s\n", n, phdr->p_type, name);
+		debug("Parsing Note entry %d type 0x%x name %s\n", n, phdr->p_type, name);
 
 		if (check_note_name(note) == 0) {
 			if (strcmp("CORE", name) == 0) {
@@ -465,15 +465,15 @@ static int parse_pt_note(struct arch *arch, Elf64_Phdr *phdr) {
 			} else if (strcmp("VMCOREINFO_XEN", name) == 0) {
 				ret = parse_note_VMCOREINFO_XEN(arch, offset, note);
 			} else {
-				fprintf(debug, "Unknown note entry name %s\n", name);
+				debug("Unknown note entry name %s\n", name);
 				ret = 0;
 			}
 			if (ret) {
-				fprintf(debug, "Failed to handle note entry %s\n", name);
+				debug("Failed to handle note entry %s\n", name);
 			}
 			__add_note(p_info, name, note->n_type, (char*) ELFNOTE_DESC(note), note->n_descsz);
 		} else {
-			fprintf(debug, "Invalid note %d name\n", n);
+			debug("Invalid note %d name\n", n);
 		}
 
 		offset += (off64_t) (unsigned long) ELFNOTE_NEXT(note) - (off64_t) (unsigned long) note;
@@ -515,14 +515,14 @@ static int foreach_phdr_type(Elf64_Ehdr *ehdr, Elf_Word p_type,
 
 		if (kdump_read(&phdr, ehdr->e_phoff + (i*sizeof(phdr)), sizeof(phdr)) != sizeof(phdr))
 		{
-			fprintf(debug, "failed to read program header %d: %s\n",
+			debug("failed to read program header %d: %s\n",
 				i, strerror(errno));
 			return 1;
 		}
 		if (phdr.p_type == p_type) {
-		   fprintf(debug, "parse Phdr entry %d of type 0x%x\n", i, phdr.p_type);
+		   debug("parse Phdr entry %d of type 0x%x\n", i, phdr.p_type);
 			if ((*callback)(dump->_arch, &phdr)) {
-				fprintf(debug, "Error: failed to parse pt entry %d of type 0x%x\n", i,
+				debug("Error: failed to parse pt entry %d of type 0x%x\n", i,
 						phdr.p_type);
 			}
 		}
@@ -535,7 +535,7 @@ int create_elf_header_xen(FILE *f, mem_range_t * mr_first) {
 	mem_range_t * mr = mr_first;
 
 	while (mr) {
-		fprintf(debug, "ELF PT_LOAD start mfn %#" PRIxMADDR " end mfn %#" PRIxMADDR " pages %#" PRIx64 " vaddr %#" PRIxVADDR "\n", mr->mfn, mr->mfn + mr->page_count,
+		debug("ELF PT_LOAD start mfn %#" PRIxMADDR " end mfn %#" PRIxMADDR " pages %#" PRIx64 " vaddr %#" PRIxVADDR "\n", mr->mfn, mr->mfn + mr->page_count,
 				mr->page_count, mr->vaddr);
 
 		p_info = __add_phdr_info(&elfall, PT_LOAD, PF_R | PF_W | PF_X);
@@ -565,7 +565,7 @@ int create_elf_header_dom(FILE *f, int dom_id) {
 	int vmalloc_count, n;
 	int cpuid;
 
-	fprintf(debug, "%s: domid %d\n", __FUNCTION__, dom_id);
+	debug("%s: domid %d\n", __FUNCTION__, dom_id);
 
 	d = &dump->domains[dom_id];
 
@@ -589,7 +589,7 @@ int create_elf_header_dom(FILE *f, int dom_id) {
 			vcpu = &d->vcpus[cpuid]; // xen vcpu state
 		}
 		prstatus_size = kdump_set_prstatus(d, prs, vcpu);
-		fprintf(debug, "adding note ELF_Prstatus size = 0x%x\n", prstatus_size);
+		debug("adding note ELF_Prstatus size = 0x%x\n", prstatus_size);
 		__add_note(p_info, "CORE", NT_PRSTATUS, (char*) &prs, prstatus_size);
 	}
 	/* setup ELF PT_LOAD program header for the
@@ -639,7 +639,7 @@ int parse_dump()
 
 	if (kdump_read(&ehdr, 0, sizeof(ehdr)) != sizeof(ehdr))
 	{
-		fprintf(debug, "failed to read dump elf header: %s\n", strerror(errno));
+		debug("failed to read dump elf header: %s\n", strerror(errno));
 		return 1;
 	}
 	memcpy(ehdr_out, &ehdr, sizeof(ehdr));
@@ -659,7 +659,7 @@ int parse_dump()
 		dump->compat_arch = &arch_x86_32;
 		break;
 	default:
-		fprintf(debug, "unknown machine class %d\n", dump->e_machine);
+		debug("unknown machine class %d\n", dump->e_machine);
 		return 1;
 	}
 

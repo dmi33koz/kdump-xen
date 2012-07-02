@@ -206,7 +206,8 @@ extern void open_dump(const char *fn, struct symbol_table *symtab,
 extern void close_dump();
 extern size_t kdump_read(void *buf, off64_t offset, size_t length);
 
-extern FILE *debug, *output;
+extern FILE *debug_file, *output;
+#define debug(fmt, ...) fprintf(debug_file, "%s:%d %s() " fmt, __FILE__, __LINE__, __FUNCTION__, ##__VA_ARGS__)
 
 static inline int kdump_cpu_is_32bit_pv(struct cpu_state *cpu)
 {
@@ -344,7 +345,9 @@ extern int parse_domain_list(int nr_symtabs, const char **symtabs);
 
 void free_domain(struct domain *domain);
 
-void hex_dump(int offset, void *ptr, int size);
+extern void __hex_dump(const char *file, const char *function, int line, int offset, void *ptr, int size);
+#define hex_dump(offset, ptr, size) \
+      __hex_dump(__FILE__, __FUNCTION__, __LINE__, offset, ptr, size)
 
 extern int create_elf_header_xen(FILE *f, mem_range_t * mr_first);
 
