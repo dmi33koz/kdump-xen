@@ -617,12 +617,12 @@ static maddr_t x86_32_virt_to_mach(struct cpu_state *cpu, vaddr_t virt)
 		(cpu->flags&CPU_EXTD_STATE) && (uint32_t)cpu->x86_crs.cr[3]);
 
 	if ((cpu->flags&CPU_EXTD_STATE) && cpu->x86_crs.cr[3]) {
-		extern int x86_virt_to_mach(uint64_t cr3,
+		extern int x86_virt_to_mach(uint64_t cr[8],
 					    int paging_levels,
 					    vaddr_t virt, maddr_t *maddr);
 		maddr_t maddr;
 
-		if(x86_virt_to_mach(cpu->x86_crs.cr[3], paging_levels, virt, &maddr))
+		if(x86_virt_to_mach(cpu->x86_crs.cr, paging_levels, virt, &maddr))
 			goto page_offset;
 
 		return maddr;

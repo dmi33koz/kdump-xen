@@ -5,14 +5,22 @@
 #include "kdump.h"
 #include "memory.h"
 
-int x86_virt_to_mach(maddr_t cr3, int paging_levels, vaddr_t vaddr, maddr_t *maddr)
+int x86_virt_to_mach(uint64_t cr[8], int paging_levels, vaddr_t vaddr, maddr_t *maddr)
 {
 	maddr_t pdp;
 	maddr_t pd;
 	maddr_t pt;
 	maddr_t page;
+	int dbg = 0;
+	int status = 0;
+	*maddr = -1ULL;
 
-	//debug("translating %"PRIxVADDR" with CR3 %"PRIx64" and %d levels of page table\n", vaddr, cr3, paging_levels);
+debug_retry:
+	if (dbg) {
+		debug("Translating %"PRIxVADDR" with CR3 %"PRIx64" and %d levels of page table\n", vaddr, cr[3], paging_levels);
+		debug("cr0 %08"PRIxVADDR" cr1 %08"PRIxVADDR" cr2 %08"PRIxVADDR" cr3 %08"PRIxVADDR" \n", cr[0], cr[2], cr[2], cr[3]);
+		debug("cr4 %08"PRIxVADDR" cr5 %08"PRIxVADDR" cr6 %08"PRIxVADDR" cr7 %08"PRIxVADDR" \n", cr[4], cr[5], cr[6], cr[7]);
+	}
 
 	if (paging_levels == 2)
 	{
@@ -24,20 +32,24 @@ int x86_virt_to_mach(maddr_t cr3, int paging_levels, vaddr_t vaddr, maddr_t *mad
 	{
 		maddr_t offset = (vaddr >> 39) & ((1<<9)-1);
 		uint64_t pml4e;
-		pml4e = kdump_read_uint64_maddr(cr3 + 8*offset);
+		pml4e = kdump_read_uint64_maddr(cr[3] + 8*offset);
+		if (dbg) {
+			debug("PML4 @ %"PRIx64"\n", cr[3]);
+			debug("PML4[%"PRIxMADDR"] @ %"PRIxMADDR" = %"PRIx64"\n", offset, cr[3] + 8*offset, pml4e);
+		}
 		if (!(pml4e&1)) /* Not present */
 		{
-			debug("PML4 @ %"PRIx64"\n", cr3);
-			debug("PML4[%"PRIxMADDR"] @ %"PRIxMADDR" = %"PRIx64" not present\n",
-				offset, cr3 + 8*offset, pml4e);
-			return 1;
+			if (dbg)
+				debug("PML4 not present\n");
+			status = 1;
+			goto done;
 		}
 
 		pdp = pml4e & 0x000FFFFFFFFFF000ULL;
 	}
 	else
 	{
-		pdp = cr3 & ~0x1f;
+		pdp = cr[3] & ~0x1f;
 	}
 
 	if (paging_levels >= 3)
@@ -51,22 +63,24 @@ int x86_virt_to_mach(maddr_t cr3, int paging_levels, vaddr_t vaddr, maddr_t *mad
 			offset = (vaddr >> 30) & ((1<<2)-1);
 
 		pdpe = kdump_read_uint64_maddr(pdp + 8*offset);
+		if (dbg) {
+			debug("PDP @ %"PRIxMADDR"\n", pdp);
+			debug("PDP[%"PRIxMADDR"] @ %"PRIxMADDR" = %"PRIx64"\n", offset, pdp + 8*offset, pdpe);
+		}
 
 		if (!(pdpe&1)) /* Not present */
 		{
-			debug("PDP @ %"PRIxMADDR"\n", pdp);
-			debug("PDP[%"PRIxMADDR"] @ %"PRIxMADDR" = %"PRIx64" not present\n",
-				offset,
-				pdp + 8*offset,
-				pdpe);
-			return 1;
+			if (dbg)
+				debug("PDP not present\n");
+			status = 1;
+			goto done;
 		}
 
 		pd = pdpe & 0x000FFFFFFFFFF000ULL;
 	}
 	else
 	{
-		pd = cr3 & ~0xfff;
+		pd = cr[3] & ~0xfff;
 	}
 
 	if (paging_levels >= 2)
@@ -74,16 +88,16 @@ int x86_virt_to_mach(maddr_t cr3, int paging_levels, vaddr_t vaddr, maddr_t *mad
 		maddr_t offset = (vaddr >> 21) & ((1<<9)-1);
 		uint64_t pde;
 		pde = kdump_read_uint64_maddr(pd + 8*offset);
-
+		if (dbg) {
+			debug("PD @ %"PRIxMADDR"\n", pd);
+			debug("PD[%"PRIxMADDR"] @ %"PRIxMADDR" = %"PRIx64"\n", offset,	pd + 8*offset,	pde);
+		}
 		if (!(pde&1)) /* Not present */
 		{
-			debug("PD @ %"PRIxMADDR"\n", pd);
-			debug("PD[%"PRIxMADDR"] @ %"PRIxMADDR" = %"PRIx64" not present\n",
-				offset,
-				pd + 8*offset,
-				pde);
-
-			return 1;
+			if (dbg)
+				debug("PD not present\n");
+			status = 1;
+			goto done;
 		}
 
 		if (pde&0x80ULL) /* 2M page */
@@ -100,7 +114,7 @@ int x86_virt_to_mach(maddr_t cr3, int paging_levels, vaddr_t vaddr, maddr_t *mad
 	}
 	else
 	{
-		return 1;
+		goto done;
 	}
 
 
@@ -108,15 +122,16 @@ int x86_virt_to_mach(maddr_t cr3, int paging_levels, vaddr_t vaddr, maddr_t *mad
 		maddr_t offset = (vaddr >> 12) & ((1<<9)-1);
 		uint64_t pte;
 		pte = kdump_read_uint64_maddr(pt + 8*offset);
-
+		if (dbg) {
+			debug("PT @ %"PRIxMADDR"\n", pt);
+			debug("PT[%"PRIxMADDR"] @ %"PRIxMADDR" = %"PRIx64"\n", offset, pt + 8*offset,	pte);
+		}
 		if (!(pte&1)) /* Not present */
 		{
-			debug("PT @ %"PRIxMADDR"\n", pt);
-			debug("PT[%"PRIxMADDR"] @ %"PRIxMADDR" = %"PRIx64" not present\n",
-				offset,
-				pt + 8*offset,
-				pte);
-			return 1;
+			if (dbg)
+				debug("PT not present\n");
+			status = 1;
+			goto done;
 		}
 
 		page = pte & 0x000FFFFFFFFFF000ULL;
@@ -124,10 +139,16 @@ int x86_virt_to_mach(maddr_t cr3, int paging_levels, vaddr_t vaddr, maddr_t *mad
 		*maddr = page | (vaddr&((1<<12)-1));
 	}
 
- done:
-	//debug("PAGE %"PRIxMADDR"\n", page);
-
-	//debug("MADDR %"PRIxMADDR"\n", *maddr);
-
-	return 0;
+done:
+	if (status) {
+		if (!dbg) {
+			dbg = 1;
+			goto debug_retry;
+		}
+		debug("Error: In address translation\n");
+	}
+	if (dbg) {
+		debug("vaddr %"PRIxVADDR" ==> maddr %"PRIxMADDR"\n", vaddr, *maddr);
+	}
+	return status;
 }
