@@ -106,10 +106,10 @@ static int parse_domain(vaddr_t domain, int nr_symtabs, const char **symtabs)
 	d->domid = *(uint16_t*)(tmp+DOMAIN_id);
 	d->v_domain_info = domain;
 	d->v_shared_info = kdump_read_pointer_vaddr(NULL, domain+DOMAIN_shared_info);
-	d->has_32bit_shinfo = kdump_read_pointer_vaddr(NULL, domain+DOMAIN_has_32bit_shinfo);
-	d->is_hvm = kdump_read_uint8_vaddr(NULL, domain+DOMAIN_is_hvm);
-	d->is_privileged = kdump_read_uint8_vaddr(NULL, domain+DOMAIN_is_privileged);
-	d->is_32bit_pv = kdump_read_uint8_vaddr(NULL, domain+DOMAIN_is_32bit_pv);
+	d->has_32bit_shinfo = tmp[DOMAIN_has_32bit_shinfo];
+	d->is_hvm = tmp[DOMAIN_is_hvm];
+	d->is_privileged = tmp[DOMAIN_is_privileged];
+	d->is_32bit_pv = tmp[DOMAIN_is_32bit_pv];
 
 	if (d->has_32bit_shinfo && dump->compat_arch) {
 		d->_arch = dump->compat_arch;

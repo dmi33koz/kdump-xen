@@ -281,11 +281,18 @@ static void __dump_console_ring(FILE *o,
 				vaddr_t ring_addr, uint32_t len,
 				uint32_t producer, uint32_t consumer)
 {
-	char ring[len];
+	char *ring;
+
+	ring = malloc(len);
+	if (!ring) {
+		debug("malloc %d failed\n", len);
+		return;
+	}
 
 	if (kdump_read_vaddr(domain, ring_addr, ring, len) != len)
 	{
-		fprintf(stderr, "failed to read console ring\n");
+		debug("failed to read console ring\n");
+		free(ring);
 		return;
 	}
 
@@ -299,6 +306,7 @@ static void __dump_console_ring(FILE *o,
 	}
 
 	fprintf(o, "\n\n");
+	free(ring);
 }
 
 static void dump_xen_console_ring()
