@@ -50,27 +50,9 @@
 #define PGC_state_free      PG_mask(3, 9)
 #define page_state_is(count_info, st) (((count_info) & PGC_state) == PGC_state_##st)
 
-static maddr_t xen_phys_start = 0;
 
 static vaddr_t xen__maddr_to_virt(maddr_t ma) {
-	return (vaddr_t) (XEN_virt_start + (ma - xen_phys_start));
-}
-
-static void bitness_init() {
-	static int __init = 0;
-	struct symbol *sym;
-	if (__init) {
-		return;
-	}
-	__init = 1;
-
-	sym = symtab_lookup_name(dump->symtab, "xen_phys_start");
-	if (!sym) {
-		debug("Error Symbol not found xen_phys_start\n");
-	} else {
-		xen_phys_start = kdump_read_uint64_vaddr(NULL, sym->address);
-		debug("xen_phys_start = %#" PRIxMADDR "\n", xen_phys_start);
-	}
+	return (vaddr_t) (XEN_virt_start + (ma - dump->xen_phys_start));
 }
 
 mem_range_t * FN(get_page_ranges_xen)() {
@@ -90,12 +72,10 @@ mem_range_t * FN(get_page_ranges_xen)() {
 	mem_range_t *mr = NULL;
 	mem_range_t *mr_first = NULL;
 
-	bitness_init(dump);
-
 	debug("dump_xen_memory_new()\n");
 
 	fprintf(output, "  XEN_virt_start: %016"PRIxMADDR" XEN_page_offset: %016"PRIxMADDR"\n", XEN_virt_start, XEN_page_offset);
-	fprintf(output, "  xen_phys_start: %016"PRIxMADDR"\n", xen_phys_start);
+	fprintf(output, "  xen_phys_start: %016"PRIxMADDR"\n", dump->xen_phys_start);
 
 	sym = symtab_lookup_name(dump->symtab, "max_page");
 	if (!sym) {
@@ -112,7 +92,7 @@ mem_range_t * FN(get_page_ranges_xen)() {
 		goto return_error;
 	}
 
-	mfn_start = kdump_virt_to_mach(&dump->cpus[0], sym->address) >> PAGE_SHIFT;
+	mfn_start = kdump_virt_to_mach(NULL, sym->address) >> PAGE_SHIFT;
 	debug("mfn_start: = %#"PRIxMADDR"\n", mfn_start);
 
 	// get mfn_end
@@ -121,13 +101,12 @@ mem_range_t * FN(get_page_ranges_xen)() {
 		fprintf(output, "\tSymbol not found _end\n");
 		goto return_error;
 	}
-	mfn_end = kdump_virt_to_mach(&dump->cpus[0], sym->address) >> PAGE_SHIFT;
+	mfn_end = kdump_virt_to_mach(NULL, sym->address) >> PAGE_SHIFT;
 	debug("mfn_end:   = %#" PRIxMADDR "\n", mfn_end);
 
 	// frame table is defined as
 	// struct page_info *frame_table
-	frame_table = kdump_read_uint64_vaddr(NULL, dump->frame_table);
-	debug("frame_table = 0x%016" PRIx64 "\n", frame_table);
+	frame_table = dump->frame_table;
 
 	page_info = malloc(dump->sizeof_page_info);
 	if (!page_info) {

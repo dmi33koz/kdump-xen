@@ -135,6 +135,7 @@ static int parse_domain(vaddr_t domain, int nr_symtabs, const char **symtabs)
 			return 1;
 		}
 		vcpu = &d->vcpus[d->nr_vcpus-1];
+		vcpu->virtual.domain = d;
 
 		debug("Domain %d parsing vcpu %d\n",d->domid, d->nr_vcpus - 1);
 		if (kdump_parse_vcpu(vcpu, vcpu_info))

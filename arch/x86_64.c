@@ -188,9 +188,9 @@ static int x86_64_parse_crash_regs(void *_cr, struct cpu_state *cpu)
 		current = get_cpu_info(cpu->x86_regs.rsp);
 		/* current now points to the cpu_info struct */
 
-		cpu->nr = kdump_read_uint32_vaddr_cpu(cpu, current+CPUINFO_processor_id);
+		cpu->nr = kdump_read_uint32_vaddr_cpu(NULL, current+CPUINFO_processor_id);
 		cpu->physical.v_current =
-			kdump_read_pointer_vaddr_cpu(cpu, current+CPUINFO_current_vcpu);
+			kdump_read_pointer_vaddr_cpu(NULL, current+CPUINFO_current_vcpu);
 
 		debug("cpu number %d physical.v_current %"PRIxVADDR"\n", cpu->nr, cpu->physical.v_current);
 
@@ -337,8 +337,20 @@ static int x86_64_parse_hypervisor(void *note)
 	if (x->xen_compile_time)
 		dump->xen_compile_time  = kdump_read_string_maddr(x->xen_compile_time);
 
-	debug("Xen version %"PRId64".%"PRId64".%s\n",
+
+	debug("Xen: version %"PRId64".%"PRId64"%s\n",
 			dump->xen_major_version, dump->xen_minor_version, dump->xen_extra_version ? dump->xen_extra_version : "");
+
+	dump->xen_phys_start = x->xen_phys_start;
+	debug("Xen: xen_phys_start %" PRIx64 "\n", dump->xen_phys_start);
+
+	/*
+	 * As soon as we got xen_phys_start we can read vital address translation symbols.
+	 * We must do it before we access dump data.
+	 * FIXME this is ugly. We rely on ELF note sequence here. Note "Xen" must come before
+	 * PRSTATUS.
+	 */
+	init_xen_memory_symbols();
 	return 0;
 
 }
@@ -472,36 +484,70 @@ static vaddr_t x86_64_instruction_pointer(struct cpu_state *cpu)
 {
 	return cpu->x86_regs.rip;
 }
+/*
+ * from xen/include/asm-x86/config.h
+ * and  xen/include/x86-64/page.h
+ *  0xffff82c480000000 - 0xffff82c4bfffffff [1GB,   2^30 bytes, PML4:261]
+ *    Xen text, static data, bss.
+ *  0xffff82c4c0000000 - 0xffff82f5ffffffff [197GB,             PML4:261]
+ *    Reserved for future use.
+ *  0xffff82f600000000 - 0xffff82ffffffffff [40GB,  2^38 bytes, PML4:261]
+ *    Page-frame information array.
+ *  0xffff830000000000 - 0xffff87ffffffffff [5TB, 5*2^40 bytes, PML4:262-271]
+ *    1:1 direct mapping of all physical memory.
+ *  0xffff880000000000 - 0xffffffffffffffff [120TB, PML4:272-511]
+ *    Guest-defined use.
+ */
+#define XEN_VIRT_START           (XEN_virt_start) // for xen 4.x 0xffff82c480000000
+#define XEN_VIRT_END             (0xffff82c4c0000000ULL)
+#define XEN_DIRECTMAP_VIRT_START (XEN_page_offset) // 0xffff830000000000
+#define XEN_DIRECTMAP_VIRT_END   (0xffff880000000000ULL)
+
+#define XEN_IS_DIRECTMAP_VIRT_ADDR(vaddr) \
+    (((vaddr) >= XEN_DIRECTMAP_VIRT_START) && ((vaddr) < XEN_DIRECTMAP_VIRT_END))
+
+#define XEN_IS_VIRT_ADDR(vaddr) \
+    (((vaddr) >= XEN_VIRT_START) && ((vaddr) < XEN_VIRT_END))
+
+#define XEN_IS_FRAME_TABLE_ADDR(vaddr) \
+    (((vaddr) >= dump->frame_table) && ((vaddr) < XEN_DIRECTMAP_VIRT_START))
+
+#define XEN_PHYS_START (dump->xen_phys_start)
+
+
+extern int x86_virt_to_mach(uint64_t cr3, int paging_levels, vaddr_t virt, maddr_t *maddr);
+
+static maddr_t x86_64_xen_virt_to_mach(vaddr_t vaddr) {
+	maddr_t maddr;
+	if (vaddr < XEN_VIRT_START || vaddr >= XEN_DIRECTMAP_VIRT_END) {
+		debug("Error: Xen virtual address is out of bounds %" PRIxVADDR "\n", vaddr);
+		return (maddr_t)(-1LL);
+	}
+	if (XEN_IS_VIRT_ADDR(vaddr)) {
+		maddr = vaddr - XEN_VIRT_START + XEN_PHYS_START;
+		//debug("XEN_VIRT_ADDR vaddr %" PRIx64 " maddr %" PRIx64 "\n", vaddr, maddr);
+		return maddr;
+	}
+	if (XEN_IS_DIRECTMAP_VIRT_ADDR(vaddr)) {
+		maddr = vaddr - XEN_DIRECTMAP_VIRT_START;
+		//debug("XEN_DIRECTMAP_VIRT_ADDR vaddr %" PRIx64 " maddr %" PRIx64 "\n", vaddr, maddr);
+		return maddr;
+	}
+	//debug("pg_table vaddr %" PRIx64 "\n", vaddr);
+	// frame table translates using dump->pg_table
+	x86_virt_to_mach(dump->pg_table, 4, vaddr, &maddr);
+	return maddr;
+}
 
 static maddr_t x86_64_virt_to_mach(struct cpu_state *cpu, uint64_t virt)
 {
-	vaddr_t page_offset;
+	maddr_t maddr;
 
-	if (have_required_symbols)
-		page_offset = XEN_page_offset;
-	else
-		page_offset = 0xFFFF830000000000ULL;
-
-	if ((cpu->flags&CPU_EXTD_STATE) && cpu->x86_crs.cr[3]) {
-		extern int x86_virt_to_mach(uint64_t cr[8],
-					    int paging_levels,
-					    vaddr_t virt, maddr_t *maddr);
-		maddr_t maddr;
-
-		if(x86_virt_to_mach(cpu->x86_crs.cr, 4, virt, &maddr))
-			goto page_offset;
-
-		return maddr;
+	if (!cpu) {
+		return x86_64_xen_virt_to_mach(virt);
 	}
-
- page_offset:
-	/* Fall back to using PAGE_OFFSET if possible */
-	if (virt < page_offset) {
-		debug("cannot translate address %"PRIxVADDR" < %"PRIxVADDR" "
-			"without cr3\n", virt, page_offset);
-		return (maddr_t)-1ULL;
-	}
-	return virt - page_offset;
+	x86_virt_to_mach(cpu->x86_crs.cr[3], 4, virt, &maddr);
+	return maddr;
 }
 
 struct arch arch_x86_64 = {

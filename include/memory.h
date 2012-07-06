@@ -3,13 +3,15 @@
 #ifndef __UTIL_KDUMP_MEMORY_H__
 #define __UTIL_KDUMP_MEMORY_H__
 
+#define INVALID_ADDR ((uint64_t)(-1ULL))
+
 /* Routines for accessing virtual and physical memory in a kdump image. */
 
 /* Select a suitable CPU structure to read from (e.g. for v->m translation). */
 static inline struct cpu_state *kdump_select_cpu_for_read(struct domain *domain)
 {
 	if ( domain == NULL )
-		return &dump->cpus[0];
+		return NULL; // do xen address translation
 	else
 		return &domain->vcpus[0];
 }

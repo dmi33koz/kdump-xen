@@ -277,7 +277,7 @@ static int load_required_symbols(struct symbol_table *symtab)
 			if (r->required)
 			{
 				rc++;
-				debug("Required symbol %s not found.\n", r->n);
+				debug("Error: Required symbol %s not found.\n", r->n);
 			}
 		}
 		else
@@ -303,7 +303,7 @@ struct symbol_table *symtab_parse(const char *symtab_file, int domnr)
     symtab = malloc(sizeof(struct symbol_table));
     if ( symtab == NULL )
     {
-	    debug("unable to allocate memory for symtab %s\n", symtab_file);
+	    debug("Error: unable to allocate memory for symtab %s\n", symtab_file);
 	    return NULL;
     }
 
@@ -333,7 +333,7 @@ struct symbol_table *symtab_parse(const char *symtab_file, int domnr)
     f = fopen(symtab_file, "r");
     if( f == NULL )
     {
-   	 debug("unable to open symtab %s\n", symtab_file);
+   	 debug("Error: unable to open symtab %s\n", symtab_file);
 	    free(symtab);
 	    return NULL;
     }
@@ -385,7 +385,7 @@ struct symbol_table *symtab_parse(const char *symtab_file, int domnr)
 	rc = load_required_symbols(symtab);
 	if (rc)
 	{
-	    debug("%d required %s not found. Some functionality will be disabled.\n",
+	    debug("Error: %d required %s not found. Some functionality will be disabled.\n",
 		    rc, rc == 1 ? "symbol" : "symbols");
 	}
     }

@@ -134,7 +134,7 @@ static void __fix_section_offsets(elf_all_t *all) {
 		}
 	}
 
-   // Loads with actual data
+	// Loads with actual data
 	for (i = 0; i < p_all->count; i++) {
 		pi = &p_all->pinfos[i];
 		if (pi->phdr.p_type == PT_LOAD && pi->size) {
@@ -145,7 +145,7 @@ static void __fix_section_offsets(elf_all_t *all) {
 		}
 	}
 
-   // Extra Loads for virtual addresses pointing to data in other loads
+	// Extra Loads for virtual addresses pointing to data in other loads
 	for (v = 0; v < p_all->count; v++) {
 		piv = &p_all->pinfos[v];
 		if (piv->phdr.p_type == PT_LOAD && piv->size == 0) {
@@ -343,24 +343,37 @@ err:
 		free(note);
 	return 1;
 }
+/*
+ * This is a hack - we need to parce "Xen" XEN_ELFNOTE_CRASH_INFO note first
+ * in order to find xen_phys_start
+ */
+
+static int parce_xen_note_only = 0;
 
 static int parse_note_Xen(struct arch *arch, off64_t offset, Elf_Nhdr *note)
 {
-	switch (note->n_type) {
-	case XEN_ELFNOTE_CRASH_INFO:
+
+	if (note->n_type == XEN_ELFNOTE_CRASH_INFO) {
 
 		//debug("Xen ELFNOTE_CRASH_INFO\n");
-
-		if (kdump_parse_hypervisor(ELFNOTE_DESC(note)))
-		{
-			debug("failed to parse hypervisor note\n");
+		if (parce_xen_note_only) {
+			if (kdump_parse_hypervisor(ELFNOTE_DESC(note)))
+			{
+				debug("failed to parse hypervisor note\n");
+				return 1;
+			}
+		}
+		return 0;
+	}
+	if (parce_xen_note_only) {
+		return 0;
+	}
+	if (note->n_type == XEN_ELFNOTE_CRASH_REGS) {
+		/* Haven't parsed the basic state? */
+		if (current_cpu.flags == 0) {
+			debug("Haven't parsed the basic state skipping\n");
 			return 1;
 		}
-		break;
-	case XEN_ELFNOTE_CRASH_REGS: {
-		/* Haven't parsed the basic state? */
-		if (current_cpu.flags == 0)
-			return 1;
 
 		if (kdump_parse_crash_regs(arch, ELFNOTE_DESC(note), &current_cpu))
 			return 1;
@@ -372,10 +385,7 @@ static int parse_note_Xen(struct arch *arch, off64_t offset, Elf_Nhdr *note)
 
 		memcpy(&dump->cpus[current_cpu.nr], &current_cpu, sizeof(current_cpu));
 		memset(&current_cpu, 0, sizeof(current_cpu));
-
-		break;
-	}
-	default:
+	} else {
 		debug("unhandled \"Xen\" note type %x\n", note->n_type);
 		return 1;
 	}
@@ -439,7 +449,7 @@ static int parse_note_VMCOREINFO(struct arch *arch, off64_t offset, Elf_Nhdr *no
 static int parse_note_VMCOREINFO_XEN(struct arch *arch, off64_t offset, Elf_Nhdr *note)
 {
 	char * text;
-   uint64_t val;
+	uint64_t val;
 
 	text = malloc(note->n_descsz +1);
 	memcpy(text, ELFNOTE_DESC(note), note->n_descsz);
@@ -450,7 +460,7 @@ static int parse_note_VMCOREINFO_XEN(struct arch *arch, off64_t offset, Elf_Nhdr
 	debug("\n%s\n", text);
 
 	if (note_get_symbol_hex(text, "SYMBOL(frame_table)=", &val) == 0) {
-		dump->frame_table = val;
+		dump->frame_table = kdump_read_pointer_vaddr(NULL, val);
 	}
 	debug("frame_table = %#" PRIx64 "\n", dump->frame_table);
 
@@ -486,21 +496,24 @@ static int parse_pt_note(struct arch *arch, Elf64_Phdr *phdr) {
 		debug("Failed to read PT_NOTE: %s\n", strerror(errno));
 		return 1;
 	}
-
-	p_info = __add_phdr_info(&elfall, phdr->p_type, phdr->p_flags);
+	if (!parce_xen_note_only) {
+		p_info = __add_phdr_info(&elfall, phdr->p_type, phdr->p_flags);
+	}
 	n = 0;
 	for (note = (Elf_Nhdr*) notes; (void*) note < (void*) notes + phdr->p_filesz - 1; note = ELFNOTE_NEXT(note)) {
-      name = ELFNOTE_NAME(note);
-      size = note->n_namesz;
+		name = ELFNOTE_NAME(note);
+		size = note->n_namesz;
 		debug("Parsing Note entry %d type 0x%x name %s\n", n, note->n_type, name);
 
 		if (check_note_name(note) == 0) {
-			if (strcmp("CORE", name) == 0) {
+			if (strcmp("Xen", name) == 0) {
+				ret = parse_note_Xen(arch, offset, note);
+			} else if (parce_xen_note_only) {
+				continue;
+			} else if (strcmp("CORE", name) == 0) {
 				ret = parse_note_CORE(arch, offset, note);
 			} else if (strcmp("XEN CORE", name) == 0) {
 				ret = parse_note_XEN_CORE(arch, offset, note);
-			} else if (strcmp("Xen", name) == 0) {
-				ret = parse_note_Xen(arch, offset, note);
 			} else if (strcmp("VMCOREINFO", name) == 0) {
 				ret = parse_note_VMCOREINFO(arch, offset, note);
 			} else if (strcmp("VMCOREINFO_XEN", name) == 0) {
@@ -512,7 +525,9 @@ static int parse_pt_note(struct arch *arch, Elf64_Phdr *phdr) {
 			if (ret) {
 				debug("Failed to handle note entry %s\n", name);
 			}
-			__add_note(p_info, name, note->n_type, (char*) ELFNOTE_DESC(note), note->n_descsz);
+			if (!parce_xen_note_only) {
+				__add_note(p_info, name, note->n_type, (char*) ELFNOTE_DESC(note), note->n_descsz);
+			}
 		} else {
 			debug("Invalid note %d name\n", n);
 		}
@@ -565,7 +580,7 @@ static int foreach_phdr_type(Elf64_Ehdr *ehdr, Elf_Word p_type,
 			return 1;
 		}
 		if (phdr.p_type == p_type) {
-		   debug("parse Phdr entry %d of type 0x%x\n", i, phdr.p_type);
+			debug("parse Phdr entry %d of type 0x%x\n", i, phdr.p_type);
 			if ((*callback)(dump->_arch, &phdr)) {
 				debug("Error: failed to parse pt entry %d of type 0x%x\n", i,
 						phdr.p_type);
@@ -723,6 +738,16 @@ int parse_dump()
 	 */
 	if (foreach_phdr_type(&ehdr, PT_LOAD, &parse_pt_load))
 		return 1;
+	/*
+	 * Now we need to grab some vital data to be able to translate xen
+	 * virtual addersses
+	 */
+	parce_xen_note_only = 1;
+
+	if (foreach_phdr_type(&ehdr, PT_NOTE, &parse_pt_note))
+		return 1;
+
+	parce_xen_note_only = 0;
 
 	if (foreach_phdr_type(&ehdr, PT_NOTE, &parse_pt_note))
 		return 1;

@@ -192,6 +192,8 @@ struct dump {
 	/* Memory */
 	int nr_machine_memory;
 	struct memory_extent *machine_memory;
+	maddr_t xen_phys_start;
+	maddr_t pg_table;
 
 	/* Domains */
 	int nr_domains;
@@ -207,7 +209,13 @@ extern void close_dump();
 extern size_t kdump_read(void *buf, off64_t offset, size_t length);
 
 extern FILE *debug_file, *output;
-#define debug(fmt, ...) fprintf(debug_file, "%s:%d %s() " fmt, __FILE__, __LINE__, __FUNCTION__, ##__VA_ARGS__)
+
+#define debug(fmt, ...) \
+	do { \
+		fprintf(debug_file, "%s:%d %s() " fmt, __FILE__, __LINE__, __FUNCTION__, ##__VA_ARGS__); \
+		fflush(debug_file); \
+	} while(0)
+
 
 static inline int kdump_cpu_is_32bit_pv(struct cpu_state *cpu)
 {
@@ -356,4 +364,5 @@ extern int create_elf_header_dom(FILE *f, int dom_id);
 extern mem_range_t * alloc_mem_range(void);
 extern void free_mem_range(mem_range_t *mr_first);
 void xen_m2p(struct domain *d, struct memory_extent *extents, int count);
+int init_xen_memory_symbols();
 #endif

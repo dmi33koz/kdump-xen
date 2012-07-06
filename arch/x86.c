@@ -5,7 +5,7 @@
 #include "kdump.h"
 #include "memory.h"
 
-int x86_virt_to_mach(uint64_t cr[8], int paging_levels, vaddr_t vaddr, maddr_t *maddr)
+int x86_virt_to_mach(uint64_t cr3, int paging_levels, vaddr_t vaddr, maddr_t *maddr)
 {
 	maddr_t pdp;
 	maddr_t pd;
@@ -17,9 +17,7 @@ int x86_virt_to_mach(uint64_t cr[8], int paging_levels, vaddr_t vaddr, maddr_t *
 
 debug_retry:
 	if (dbg) {
-		debug("Translating %"PRIxVADDR" with CR3 %"PRIx64" and %d levels of page table\n", vaddr, cr[3], paging_levels);
-		debug("cr0 %08"PRIxVADDR" cr1 %08"PRIxVADDR" cr2 %08"PRIxVADDR" cr3 %08"PRIxVADDR" \n", cr[0], cr[2], cr[2], cr[3]);
-		debug("cr4 %08"PRIxVADDR" cr5 %08"PRIxVADDR" cr6 %08"PRIxVADDR" cr7 %08"PRIxVADDR" \n", cr[4], cr[5], cr[6], cr[7]);
+		debug("Translating %"PRIxVADDR" with CR3 %"PRIx64" and %d levels of page table\n", vaddr, cr3, paging_levels);
 	}
 
 	if (paging_levels == 2)
@@ -32,10 +30,10 @@ debug_retry:
 	{
 		maddr_t offset = (vaddr >> 39) & ((1<<9)-1);
 		uint64_t pml4e;
-		pml4e = kdump_read_uint64_maddr(cr[3] + 8*offset);
+		pml4e = kdump_read_uint64_maddr(cr3 + 8*offset);
 		if (dbg) {
-			debug("PML4 @ %"PRIx64"\n", cr[3]);
-			debug("PML4[%"PRIxMADDR"] @ %"PRIxMADDR" = %"PRIx64"\n", offset, cr[3] + 8*offset, pml4e);
+			debug("PML4 @ %"PRIx64"\n", cr3);
+			debug("PML4[%"PRIxMADDR"] @ %"PRIxMADDR" = %"PRIx64"\n", offset, cr3 + 8*offset, pml4e);
 		}
 		if (!(pml4e&1)) /* Not present */
 		{
@@ -49,7 +47,7 @@ debug_retry:
 	}
 	else
 	{
-		pdp = cr[3] & ~0x1f;
+		pdp = cr3 & ~0x1f;
 	}
 
 	if (paging_levels >= 3)
@@ -80,7 +78,7 @@ debug_retry:
 	}
 	else
 	{
-		pd = cr[3] & ~0xfff;
+		pd = cr3 & ~0xfff;
 	}
 
 	if (paging_levels >= 2)

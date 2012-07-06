@@ -418,7 +418,11 @@ static void dump_domain_version_info(FILE *o, struct domain *d) {
 	sym = symtab_lookup_name(d->symtab, sname);
 	if (sym) {
 		maddr = kdump_virt_to_mach(&d->vcpus[0], sym->address);
-		txt = kdump_read_string_maddr(maddr);
+		if (maddr == INVALID_ADDR) {
+			debug("Error: Failed to translate sym %s addr %" PRIxVADDR "\n"  , sname, sym->address);
+		} else {
+			txt = kdump_read_string_maddr(maddr);
+		}
 	} else {
 		debug("Error Symbol not found: %s\n", sname);
 	}
@@ -432,7 +436,11 @@ static void dump_domain_version_info(FILE *o, struct domain *d) {
 	sym = symtab_lookup_name(d->symtab, sname);
 	if (sym) {
 		maddr = kdump_virt_to_mach(&d->vcpus[0], sym->address);
-		txt = kdump_read_string_maddr(maddr);
+		if (maddr == INVALID_ADDR) {
+			debug("Error: Failed to translate sym %s addr %" PRIxVADDR "\n"  , sname, sym->address);
+		} else {
+			txt = kdump_read_string_maddr(maddr);
+		}
 	} else {
 		debug("Error Symbol not found: %s\n", sname);
 	}

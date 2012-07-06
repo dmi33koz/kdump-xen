@@ -158,7 +158,7 @@ int x86_32_set_prstatus(struct domain *d, void *_prs, struct cpu_state *cpu) {
 	prs->pr_reg[16] = cpu->x86_regs.ss;
 	prs->pr_pid = cpu->pr_pid;
 
-	debug("cpu registers:\n");
+	//debug("cpu registers:\n");
 	//hex_dump(0, prs->pr_reg, 4 * 17);
 
 	return sizeof(ELF_Prstatus);
@@ -199,8 +199,8 @@ int x86_32_get_vmalloc_extents(struct domain *d, struct cpu_state *cpu, struct m
 	ve_addr = kdump_read_uint32_vaddr(d, vmlist_s->address);
 
 	while (ve_addr) {
-		if (kdump_read_vaddr(NULL, ve_addr, &ve, sizeof(ve)) != sizeof(ve)) {
-			debug("vmlist entry error unavailable.");
+		if (kdump_read_vaddr(d, ve_addr, &ve, sizeof(ve)) != sizeof(ve)) {
+			debug("Error: vmlist entry unavailable.\n");
 			goto err;
 		}
 		if ((ve.flags & VM_ALLOC) && ve.nr_pages != 0) {
@@ -210,7 +210,11 @@ int x86_32_get_vmalloc_extents(struct domain *d, struct cpu_state *cpu, struct m
 			// for every page of vmalloc area find machine address and fill extents
 			for (n = 0; n < ve.nr_pages; n++) {
 				vaddr = (vaddr_t) (uint32_t) ve.addr + (n << PAGE_SHIFT);
-				maddr = kdump_virt_to_mach(&dump->cpus[0], vaddr);
+				maddr = kdump_virt_to_mach(&d->vcpus[0], vaddr);
+				if (maddr == INVALID_ADDR) {
+					debug("Error: Dom %d Failed to translate vmalloc vaddr %" PRIxVADDR "\n", d->domid, vaddr);
+					continue;
+				}
 				(ext + n_ext)->maddr = maddr;
 				(ext + n_ext)->vaddr = vaddr;
 				(ext + n_ext)->paddr = -1;
@@ -341,10 +345,10 @@ static int x86_32_parse_crash_regs(void *_cr, struct cpu_state *cpu)
 		current += CPUINFO_sizeof;
 		current -= kdump_sizeof_pointer(dump);
 
-		cpu->nr = kdump_read_uint32_vaddr_cpu(cpu, current-4);
+		cpu->nr = kdump_read_uint32_vaddr_cpu(NULL, current-4);
 
 		cpu->physical.v_current =
-			kdump_read_pointer_vaddr_cpu(cpu, current);
+			kdump_read_pointer_vaddr_cpu(NULL, current);
 
 		debug("cpu number %d physical.v_current %"PRIxVADDR"\n", cpu->nr, cpu->physical.v_current);
 
@@ -484,8 +488,12 @@ static int x86_32_parse_hypervisor(void *note)
 	if (x->xen_compile_time)
 		dump->xen_compile_time  = kdump_read_string_maddr(x->xen_compile_time);
 
-	debug("Xen version %"PRId64".%"PRId64".%s\n",
+	debug("Xen version %"PRId64".%"PRId64"%s\n",
 			dump->xen_major_version, dump->xen_minor_version, dump->xen_extra_version ? dump->xen_extra_version : "");
+
+	dump->xen_phys_start = x->xen_phys_start;
+	debug("Xen: xen_phys_start %" PRIx64 "\n", dump->xen_phys_start);
+
 	return 0;
 }
 
@@ -613,6 +621,26 @@ static vaddr_t x86_32_instruction_pointer(struct cpu_state *cpu)
 	return cpu->x86_regs.eip;
 }
 
+/* FIXME should be like in
+ * xen/include/asm-x86/config.h
+ * and  xen/include/x86-32/page.h
+ */
+#define XEN_IOREMAP_VIRT_START      (0xFFC00000UL)
+
+#define XEN_DIRECTMAP_VIRT_START    (0xFF000000UL)
+#define XEN_DIRECTMAP_VIRT_END      XEN_IOREMAP_VIRT_START
+
+#define XEN_DIRECTMAP_VIRT_ADDR(vaddr) \
+    (((vaddr) >= XEN_DIRECTMAP_VIRT_START) && ((vaddr) < XEN_DIRECTMAP_VIRT_END))
+/*
+static maddr_t x86_32_xen_virt_to_mach(vaddr_t vaddr) {
+	maddr_t maddr = (vaddr_t) -1ULL;
+	if (XEN_DIRECTMAP_VIRT_ADDR(vaddr)) {
+		maddr = vaddr - XEN_DIRECTMAP_VIRT_START;
+	}
+	return maddr;
+}
+*/
 static maddr_t x86_32_virt_to_mach(struct cpu_state *cpu, vaddr_t virt)
 {
 	vaddr_t page_offset;
@@ -631,12 +659,12 @@ static maddr_t x86_32_virt_to_mach(struct cpu_state *cpu, vaddr_t virt)
 		(cpu->flags&CPU_EXTD_STATE) && (uint32_t)cpu->x86_crs.cr[3]);
 
 	if ((cpu->flags&CPU_EXTD_STATE) && cpu->x86_crs.cr[3]) {
-		extern int x86_virt_to_mach(uint64_t cr[8],
+		extern int x86_virt_to_mach(uint64_t cr3,
 					    int paging_levels,
 					    vaddr_t virt, maddr_t *maddr);
 		maddr_t maddr;
 
-		if(x86_virt_to_mach(cpu->x86_crs.cr, paging_levels, virt, &maddr))
+		if(x86_virt_to_mach(cpu->x86_crs.cr[3], paging_levels, virt, &maddr))
 			goto page_offset;
 
 		return maddr;

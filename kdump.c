@@ -211,3 +211,32 @@ void free_mem_range(mem_range_t *mr_first) {
 		mr = next;
 	}
 }
+
+int init_xen_memory_symbols() {
+	struct symbol *sym;
+	char *s_name;
+
+	if (dump->xen_phys_start == 0) {
+		debug("Error:!!! xen_phys_start is 0. We cannot access xen addresses without it\n");
+		return -1;
+	}
+	/*
+	 * dump->pg_table MUST be used for Xen address translation.
+	 * Must not rely on cr3 of any CPU for Xen address translation.
+	 */
+	s_name = "idle_pg_table_4";
+	sym = symtab_lookup_name(dump->symtab, s_name);
+	if (!sym) {
+		s_name = "idle_pg_table";
+		sym = symtab_lookup_name(dump->symtab, s_name);
+	}
+	if (!sym) {
+		debug("Error Symbols not found idle_pg_table_4 or idle_pg_table\n");
+		return -1;
+	} else {
+		debug("sym %s address = %" PRIx64 "\n", s_name, sym->address);
+		dump->pg_table = kdump_virt_to_mach(NULL, sym->address);
+		debug("Xen: pg_table maddr = %#" PRIxMADDR "\n", dump->pg_table);
+	}
+	return 0;
+}
