@@ -32,6 +32,7 @@
 #define BITS BITS_PER_LONG
 /*
  * Page info macros.
+ * for struct page_info and flags see  xen/include/asm-x86/mm.h
  */
 
 #define PG_shift(idx)     (BITS_PER_LONG - (idx))
@@ -55,17 +56,18 @@ static vaddr_t xen__maddr_to_virt(maddr_t ma) {
 	return (vaddr_t) (XEN_virt_start + (ma - dump->xen_phys_start));
 }
 
+
 mem_range_t * FN(get_page_ranges_xen)() {
 	char *page_info = NULL;
 	char *text_state;
-	maddr_t frame_table;
+	vaddr_t frame_table;
 	uint64_t *count_info_p;
 	struct symbol *sym;
 	uint64_t max_page;
 	uint64_t mfn;
 	maddr_t mfn_start, mfn_end;
-	unsigned long xen_page_count = 0;
-	uint64_t offset_page_info;
+	uint64_t xen_page_count = 0;
+	vaddr_t page_info_addr;
 	struct memory_extent *mext;
 	int mext_i;
 
@@ -124,8 +126,9 @@ mem_range_t * FN(get_page_ranges_xen)() {
 			if (mfn > max_page) {
 				break;
 			}
-			offset_page_info = mfn * dump->sizeof_page_info;
-			if (kdump_read_vaddr(NULL, frame_table + offset_page_info, page_info, dump->sizeof_page_info) != dump->sizeof_page_info) {
+			page_info_addr = frame_table + mfn * dump->sizeof_page_info;
+
+			if (kdump_read_vaddr(NULL, page_info_addr, page_info, dump->sizeof_page_info) != dump->sizeof_page_info) {
 				debug("Failed to read page_info for mfn %"PRIx64"\n", mfn);
 				continue;
 			}
@@ -163,19 +166,12 @@ mem_range_t * FN(get_page_ranges_xen)() {
 			}
 			xen_page_count++;
 			continue;
-			debug("mfn = %"PRIx64" count_info = 0x%016" PRIx64 " state %s %s\n", mfn, *count_info_p, text_state, (*count_info_p
+			debug("mfn = %"PRIx64" page_info_addr %"PRIxVADDR" count_info = 0x%016" PRIx64 " state %s %s\n", mfn, page_info_addr, *count_info_p, text_state, (*count_info_p
 							& PGC_xen_heap) ? "Xen" : "");
-			debug("word = 0x%016" PRIx64 "\n", *count_info_p);
-			count_info_p++;
-			debug("word = 0x%016" PRIx64 "\n", *count_info_p);
-			count_info_p++;
-			debug("word = 0x%016" PRIx64 "\n", *count_info_p);
-			count_info_p++;
-			debug("word = 0x%016" PRIx64 "\n", *count_info_p);
-			count_info_p++;
+			hex_dump(0, page_info, dump->sizeof_page_info);
 		}
 	}
-	debug("xen_page_cont = %ld = %ld bytes\n", xen_page_count, xen_page_count << PAGE_SHIFT);
+	debug("xen_page_cont = %#" PRIx64 " = %" PRIu64 " bytes\n", xen_page_count, xen_page_count << PAGE_SHIFT);
 	mr = mr_first;
 	while (mr) {
 		debug("XEN mem range mfn %#" PRIx64 " - %#" PRIx64 " pages %#" PRIx64 "\n",

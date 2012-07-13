@@ -74,6 +74,16 @@ debug_retry:
 			goto done;
 		}
 
+		if (pdpe&0x80ULL) /* 1GB page */
+		{
+			if (dbg)
+				debug("pdpe %" PRIxMADDR " 1GB page mapping\n", pdpe);
+
+			page = pdpe & 0x000FFFFFC0000000ULL;
+			*maddr = page | (vaddr&((1ULL<<30)-1));
+			goto done;
+		}
+
 		pd = pdpe & 0x000FFFFFFFFFF000ULL;
 	}
 	else
@@ -100,9 +110,11 @@ debug_retry:
 
 		if (pde&0x80ULL) /* 2M page */
 		{
-			//debug("2M mapping\n");
-			page = pde & 0x0000000FFFF00000ULL;
-			*maddr = page | (vaddr&((1<<21)-1));
+			if (dbg)
+				debug("pde %" PRIxMADDR " 2M page mapping\n", pde);
+
+			page = pde & 0x000FFFFFFFE00000ULL;
+			*maddr = page | (vaddr&((1ULL<<21)-1));
 			goto done;
 		}
 		else
@@ -134,7 +146,7 @@ debug_retry:
 
 		page = pte & 0x000FFFFFFFFFF000ULL;
 
-		*maddr = page | (vaddr&((1<<12)-1));
+		*maddr = page | (vaddr&((1ULL<<12)-1));
 	}
 
 done:

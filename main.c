@@ -466,6 +466,7 @@ static void __dump_domain(struct domain *d)
 		o = output;
 
 	fprintf(o, "Domain %d:\n", d->domid);
+	debug("Domain %d:\n", d->domid);
 
 	dump_domain_version_info(o, d);
 
@@ -794,7 +795,7 @@ static void dump_domain_memory(struct domain *d, const char *file) {
 			goto out;
 		}
 	}
-	fprintf(output, "Dom0 dumped OK. File size %"PRIxMADDR"\n", ftello(mem));
+	fprintf(output, "Domain %d dumped OK. File size %"PRIxMADDR"\n", d->domid, ftello(mem));
  out:
 	fclose(mem);
 }
