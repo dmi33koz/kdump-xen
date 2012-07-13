@@ -1167,11 +1167,6 @@ int main(int argc, char **argv)
 	if (options.console_ring)
 		dump_xen_console_ring(dump);
 
-	if (options.xen_memory_dump)
-		dump_xen_memory(options.xen_memory_dump);
-	if (options.dom0_memory_dump)
-		dump_domain_memory(&dump->domains[0], options.dom0_memory_dump);
-
 	switch (options.domain_list)
 	{
 	case DOMAIN_LIST_NONE:
@@ -1183,6 +1178,11 @@ int main(int argc, char **argv)
 		dump_domains(-1);
 		break;
 	}
+
+	if (options.xen_memory_dump)
+		dump_xen_memory(options.xen_memory_dump);
+	if (options.dom0_memory_dump)
+		dump_domain_memory(&dump->domains[0], options.dom0_memory_dump);
 
 	close_dump(dump);
 
