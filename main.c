@@ -720,7 +720,7 @@ static void dump_domain_memory(struct domain *d, const char *file) {
 		}
 		if ((pfn % fpp) == 0)
 		{
-			ma = p2ml + (pfn/fpp*4);
+			ma = p2ml + pfn / fpp % fpp * 4;
 			p2m = kdump_read_pfn_maddr(d, ma) << PAGE_SHIFT;
 			if (p2m == 0)
 			{
@@ -840,7 +840,7 @@ void xen_m2p(struct domain *d, struct memory_extent *extents, int count) {
 			//	pfn, pfn+(fpp*fpp), ma, p2ml);
 		}
 		if ((pfn % fpp) == 0) {
-			ma = p2ml + (pfn / fpp * 4);
+			ma = p2ml + pfn / fpp % fpp * 4;
 			p2m = kdump_read_pfn_maddr(d, ma) << PAGE_SHIFT;
 			if (p2m == 0) {
 				//fprintf(output, "    No P2M for frames %"PRIxPFN"-%"PRIxPFN"\n",
